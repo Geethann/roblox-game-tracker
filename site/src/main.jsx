@@ -20,6 +20,19 @@ const queryClient = new QueryClient({
   },
 });
 
+// Optional visitor counts with Cloudflare Web Analytics (no cookies, no
+// tracking of individuals). Only switched on if a token was provided when the
+// site was built; otherwise nothing is loaded at all.
+const analyticsToken = import.meta.env.VITE_CF_ANALYTICS_TOKEN;
+if (analyticsToken) {
+  const script = document.createElement("script");
+  script.defer = true;
+  script.src = "https://static.cloudflareinsights.com/beacon.min.js";
+  // spa: true counts moving between pages inside the app, not just the first load.
+  script.dataset.cfBeacon = JSON.stringify({ token: analyticsToken, spa: true });
+  document.head.append(script);
+}
+
 createRoot(document.getElementById("root")).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>

@@ -16,6 +16,8 @@ import GameIcon from "../components/GameIcon.jsx";
 import { ErrorState, Skeleton } from "../components/Feedback.jsx";
 
 const PAGE_SIZE = 50;
+const NO_GAMES = [];
+const NO_RULES = {};
 
 export default function ChartsPage() {
   const charts = useCharts();
@@ -48,8 +50,8 @@ export default function ChartsPage() {
     update({ sort: key, dir: nextDir });
   }
 
-  const games = charts.data?.games ?? [];
-  const rules = charts.data?.rules ?? {};
+  const games = charts.data?.games ?? NO_GAMES;
+  const rules = charts.data?.rules ?? NO_RULES;
   const genres = useMemo(() => genreOptions(games), [games]);
   const rows = useMemo(
     () => sortGames(filterGames(games, { view, rules, query, genre, minPlayers }), sort, dir),

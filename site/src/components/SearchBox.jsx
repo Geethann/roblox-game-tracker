@@ -24,7 +24,6 @@ export default function SearchBox({
   const inputRef = useRef(null);
   const [text, setText] = useState("");
   const [open, setOpen] = useState(false);
-  const [active, setActive] = useState(0); // which suggestion is highlighted
   const [recent] = useRecentGames();
 
   // Wait until typing pauses for 250ms before searching.
@@ -36,8 +35,15 @@ export default function SearchBox({
     .filter((game) => !exclude.includes(game.universeId));
   const waiting = typed && (query !== text.trim() || search.isFetching);
 
-  // New suggestions: highlight the first one again.
-  useEffect(() => setActive(0), [query, typed]);
+  // Which suggestion is highlighted. It's remembered together with the list it
+  // belongs to, so when new results arrive the highlight starts at the top again.
+  const listKey = typed ? `search:${query}` : "recent";
+  const [highlight, setHighlight] = useState({ list: listKey, index: 0 });
+  const active = highlight.list === listKey ? highlight.index : 0;
+  const setActive = (change) => setHighlight({
+    list: listKey,
+    index: typeof change === "function" ? change(active) : change,
+  });
 
   // Press "/" anywhere on the page to jump to the search box (header only).
   useEffect(() => {

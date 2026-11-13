@@ -1,6 +1,7 @@
 # Website pipeline.
-#   Pull requests:     check the site builds, so broken code can't be merged.
-#   Changes to main:   build it and publish it to GitHub Pages.
+#   Pull requests:     check the code, run the tests and build the site, so
+#                      broken code can't be merged.
+#   Changes to main:   the same checks, then publish it to GitHub Pages.
 name: Website
 
 on:
@@ -34,7 +35,15 @@ jobs:
           cache: npm
           cache-dependency-path: site/package-lock.json
       - run: npm ci
+      - name: Check the code (ESLint)
+        run: npm run lint
+      - name: Run the tests
+        run: npm test
       - run: npm run build
+        env:
+          # Optional: set a repository variable named CF_ANALYTICS_TOKEN to turn on
+          # Cloudflare Web Analytics. If it isn't set, no analytics are added.
+          VITE_CF_ANALYTICS_TOKEN: ${{ vars.CF_ANALYTICS_TOKEN }}
       # GitHub Pages only knows about real files, so visiting /game/123
       # directly would show GitHub's own "not found" page. Serving the app
       # as the 404 page lets the app open and show the right page instead.

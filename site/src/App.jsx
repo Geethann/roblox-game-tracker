@@ -1,9 +1,10 @@
 // The page layout every page shares, and which page shows for which address.
 import { lazy, Suspense } from "react";
-import { Route, Routes } from "react-router";
+import { Link, Route, Routes } from "react-router";
 import Header from "./components/Header.jsx";
 import HomePage from "./pages/HomePage.jsx";
 import ChartsPage from "./pages/ChartsPage.jsx";
+import AboutPage from "./pages/AboutPage.jsx";
 import NotFoundPage from "./pages/NotFoundPage.jsx";
 import { Skeleton } from "./components/Feedback.jsx";
 
@@ -23,15 +24,22 @@ export default function App() {
             <Route path="/" element={<HomePage />} />
             <Route path="/charts" element={<ChartsPage />} />
             <Route path="/compare" element={<ComparePage />} />
+            <Route path="/about" element={<AboutPage />} />
             <Route path="/game/:universeId" element={<GamePage />} />
             <Route path="*" element={<NotFoundPage />} />
           </Routes>
         </Suspense>
       </main>
       <footer className="site-footer">
-        <div className="container">
-          Unofficial fan project, not affiliated with or endorsed by Roblox Corporation.
-          Data comes from Roblox&apos;s public API; each game is checked once an hour.
+        <div className="container footer-inner">
+          <p>
+            Unofficial fan project, not affiliated with or endorsed by Roblox Corporation.
+            Data comes from Roblox&apos;s public API; each game is checked once an hour.
+          </p>
+          <nav className="footer-links" aria-label="Footer">
+            <Link to="/about">How it works</Link>
+            <a href="https://github.com/Geethann/roblox-game-tracker" target="_blank" rel="noreferrer">Source code</a>
+          </nav>
         </div>
       </footer>
     </div>

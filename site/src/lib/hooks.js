@@ -71,7 +71,7 @@ export function useStoredValue(key, fallback) {
     } catch {
       return fallback;
     }
-  }, [raw]); // `fallback` is left out on purpose: callers always pass a constant
+  }, [raw, fallback]);
 
   const setValue = useCallback((next) => {
     const current = (() => {
@@ -83,7 +83,7 @@ export function useStoredValue(key, fallback) {
     })();
     const resolved = typeof next === "function" ? next(current) : next;
     writeRaw(key, JSON.stringify(resolved));
-  }, [key]); // `fallback` is left out on purpose: callers always pass a constant
+  }, [key, fallback]);
 
   return [value, setValue];
 }

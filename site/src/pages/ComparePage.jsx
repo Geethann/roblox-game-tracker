@@ -3,7 +3,7 @@
 // The whole comparison lives in the web address, e.g.
 //   /compare?main=3508322461&with=3808081382,2324662457&range=30d&mode=percent
 // so it can be bookmarked or sent to someone and opens exactly the same.
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router";
 import { ChartLine, Download, Star, Table2, X } from "lucide-react";
 import { useGames, useHistories } from "../lib/api.js";
@@ -41,7 +41,7 @@ export default function ComparePage() {
   const mode = metricKey === "players" && params.get("mode") === "percent" ? "percent" : "actual";
 
   /** Change choices in the address bar. `null` removes one (back to default). */
-  function update(changes) {
+  const update = useCallback((changes) => {
     setParams((old) => {
       const next = new URLSearchParams(old);
       for (const [key, value] of Object.entries(changes)) {
@@ -49,12 +49,12 @@ export default function ComparePage() {
       }
       return next;
     }, { replace: true });
-  }
+  }, [setParams]);
 
   // Put the main game in the address too, so "Copy link" shares the whole comparison.
   useEffect(() => {
     if (!urlMain && mainId) update({ main: String(mainId) });
-  }, [urlMain, mainId]); // `update` is left out on purpose: it only writes to the address bar
+  }, [urlMain, mainId, update]);
 
   const gameQueries = useGames(ids);
   const historyQueries = useHistories(ids, range);
