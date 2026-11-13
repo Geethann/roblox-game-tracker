@@ -1,5 +1,5 @@
 [
-  { "place_id": 10449761463, "label": "The Strongest Battlegrounds", "ours": false },
-  { "place_id": 9391468976,  "label": "Jujutsu Shenanigans",         "ours": false },
-  { "place_id": 6299805723,  "label": "Anime Fighters",              "ours": false }
+  { "place_id": 10449761463, "label": "The Strongest Battlegrounds" },
+  { "place_id": 9391468976,  "label": "Jujutsu Shenanigans" },
+  { "place_id": 6299805723,  "label": "Anime Fighters" }
 ]
