@@ -5,8 +5,10 @@
 name: Backend
 
 on:
+  # Every pull request, whatever it changes: the check is required before
+  # merging into main, so it must always run (it takes under a minute).
   pull_request:
-    paths: ["worker/**", ".github/workflows/backend.yml"]
+  # Deploys only happen when the backend itself changes.
   push:
     branches: [main]
     paths: ["worker/**", ".github/workflows/backend.yml"]

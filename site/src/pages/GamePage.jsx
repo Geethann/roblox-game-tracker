@@ -24,6 +24,13 @@ import AboutGame from "../components/AboutGame.jsx";
 import { ErrorState, Notice, Skeleton } from "../components/Feedback.jsx";
 import NotFoundPage from "./NotFoundPage.jsx";
 
+// Why a game isn't being tracked (the backend's safeguards), in plain words.
+const NOT_TRACKED = {
+  quiet: "This game isn't being tracked yet: it has no players right now and under 1,000 visits. Live numbers still update, and it'll start being tracked once it picks up.",
+  busy: "Lots of new games have been added recently, so this one isn't being tracked yet. Live numbers still update; try again a little later.",
+  full: "The tracker is full right now, so this game's history isn't being recorded. Live numbers still update.",
+};
+
 const RANGE_PHRASES = {
   "24h": "in the last 24 hours", "7d": "in the last 7 days", "30d": "in the last 30 days",
   "90d": "in the last 90 days", "1y": "in the last year", ytd: "this year", all: "since tracking began",
@@ -130,9 +137,7 @@ export default function GamePage() {
 
       <VsMainStrip game={g} />
 
-      {!g.isTracking && (
-        <Notice>The tracker is full right now, so this game&apos;s history isn&apos;t being recorded. Live numbers still update.</Notice>
-      )}
+      {!g.isTracking && <Notice>{NOT_TRACKED[g.notTrackedReason] ?? NOT_TRACKED.full}</Notice>}
 
       {/* The range picker sits above everything it changes: the cards and the chart. */}
       <div className="toolbar">

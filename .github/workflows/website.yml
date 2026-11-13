@@ -5,8 +5,10 @@
 name: Website
 
 on:
+  # Every pull request, whatever it changes: the checks are required before
+  # merging into main, so they must always run (they take about a minute).
   pull_request:
-    paths: ["site/**", ".github/workflows/website.yml"]
+  # Publishing only happens when the website itself changes.
   push:
     branches: [main]
     paths: ["site/**", ".github/workflows/website.yml"]

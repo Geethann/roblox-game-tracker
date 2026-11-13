@@ -14,12 +14,34 @@ const DAY = 86400;
 const RANGE_DAYS = { "24h": 1, "7d": 7, "30d": 30, "90d": 90, "1y": 365 }; // plus "ytd" and "all"
 const HOURLY_RANGES = new Set(["24h", "7d", "30d"]); // longer ranges use one point per day
 
-// Lets web pages on any site read our replies (browsers block it otherwise).
-const CORS = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Methods": "GET, OPTIONS" };
+// Sent with every reply.
+const HEADERS = {
+  // Lets web pages on any site read our replies (browsers block it otherwise).
+  // Safe here: the data is public and the API only allows reading.
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "GET, OPTIONS",
+  // Standard protective headers: never guess a reply's type, never run or
+  // frame anything from it, and don't tell other sites where visitors came from.
+  "X-Content-Type-Options": "nosniff",
+  "Content-Security-Policy": "default-src 'none'; frame-ancestors 'none'",
+  "Referrer-Policy": "no-referrer",
+};
+
+// Limits on adding games through search, so nobody can fill the tracker with junk.
+const MIN_VISITS_TO_TRACK = 1000;       // ...or at least one player online right now
+const MAX_SEARCH_ADDS_PER_DAY = 200;    // across all visitors
 
 export async function handleApi(request, env, ctx) {
-  if (request.method === "OPTIONS") return new Response(null, { headers: CORS });
+  if (request.method === "OPTIONS") return new Response(null, { headers: HEADERS });
   if (request.method !== "GET") return error(405, "Only GET requests are supported");
+
+  // A generous per-visitor limit (see wrangler.jsonc). Normal browsing uses a
+  // small fraction of it; it's there to stop scripts hammering the API, which
+  // would use up the free plan's daily requests and could get us blocked by Roblox.
+  const visitor = request.headers.get("CF-Connecting-IP") ?? "unknown";
+  if (!(await allowed(env.API_LIMITER, visitor))) {
+    return error(429, "Too many requests. Please slow down and try again in a minute.", { "Retry-After": "60" });
+  }
 
   // If an identical request was answered recently, reuse that answer.
   const cache = caches.default;
@@ -32,7 +54,7 @@ export async function handleApi(request, env, ctx) {
 
   let response;
   try {
-    response = await route(new URL(request.url), env);
+    response = await route(new URL(request.url), env, visitor);
   } catch (err) {
     console.error(err); // full details go to our logs, not to visitors
     return error(500, "Something went wrong on our side. Please try again in a minute.");
@@ -44,7 +66,7 @@ export async function handleApi(request, env, ctx) {
   return response;
 }
 
-async function route(url, env) {
+async function route(url, env, visitor) {
   const path = url.pathname.replace(/\/+$/, ""); // ignore a trailing slash
   if (path === "/api/search") return search(url.searchParams.get("q"), env);
   if (path === "/api/leaderboards") return leaderboards(env);
@@ -52,7 +74,7 @@ async function route(url, env) {
   if (path === "/api/status") return status(env);
 
   let match = path.match(/^\/api\/games\/(\d{1,15})$/);
-  if (match) return game(Number(match[1]), env);
+  if (match) return game(Number(match[1]), env, visitor);
 
   match = path.match(/^\/api\/games\/(\d{1,15})\/history$/);
   if (match) return history(Number(match[1]), url.searchParams.get("range") ?? "7d", env);
@@ -110,7 +132,7 @@ async function trackedSinceFor(env, ids) {
 
 // ---- GET /api/games/:id ------------------------------------------------------
 
-async function game(universeId, env) {
+async function game(universeId, env, visitor) {
   const [[stats], icons, ranks] = await Promise.all([
     fetchGameStats([universeId]),
     fetchIcons([universeId]).catch(() => new Map()),
@@ -122,7 +144,7 @@ async function game(universeId, env) {
   const saved = ranks ? JSON.parse(ranks) : null;
   const [rank, change24h] = saved?.ranks[universeId] ?? [null, null];
 
-  const tracking = await startTracking(env, stats);
+  const tracking = await startTracking(env, stats, visitor);
   return json({
     ...stats,
     icon: icons.get(universeId) ?? null,
@@ -134,26 +156,40 @@ async function game(universeId, env) {
 }
 
 /**
- * Anyone looking at a game means it's worth recording, so make sure it is.
- * Returns { trackedSince, isTracking } - isTracking is false only if the
- * tracker is full.
+ * Anyone looking at a game means it's probably worth recording, so start
+ * tracking it - unless one of the safeguards says no.
+ * Returns { trackedSince, isTracking, notTrackedReason }, where the reason is:
+ *   "quiet" - no players and under 1,000 visits (not worth a tracking place yet)
+ *   "busy"  - too many games added recently (by this visitor, or by everyone today)
+ *   "full"  - all tracking places are in use
  */
-async function startTracking(env, stats) {
+async function startTracking(env, stats, visitor) {
   const existing = await env.DB.prepare(
     "SELECT tracked_since, active FROM games WHERE universe_id = ?1",
   ).bind(stats.universeId).first();
-  if (existing?.active) return { trackedSince: existing.tracked_since, isTracking: true };
+  if (existing?.active) return { trackedSince: existing.tracked_since, isTracking: true, notTrackedReason: null };
+  const notTracked = (reason) => ({ trackedSince: existing?.tracked_since ?? null, isTracking: false, notTrackedReason: reason });
 
-  const activeCount = await env.DB.prepare(
-    "SELECT COUNT(*) AS n FROM games WHERE active = 1").first("n");
-  if (activeCount >= Number(env.MAX_TRACKED_GAMES)) {
-    return { trackedSince: existing?.tracked_since ?? null, isTracking: false };
-  }
+  // Safeguard 1: only games with some life in them. Stops a script filling
+  // the tracker with thousands of empty games.
+  if (stats.playing < 1 && stats.visits < MIN_VISITS_TO_TRACK) return notTracked("quiet");
+
+  // Safeguard 2: one visitor can only add a few games a minute...
+  if (!(await allowed(env.TRACK_LIMITER, visitor))) return notTracked("busy");
+
+  // ...and everyone together only so many a day.
+  const [activeCount, addedToday] = await Promise.all([
+    env.DB.prepare("SELECT COUNT(*) AS n FROM games WHERE active = 1").first("n"),
+    env.DB.prepare("SELECT COUNT(*) AS n FROM games WHERE source = 'search' AND tracked_since > ?1")
+      .bind(nowSeconds() - 86_400).first("n"),
+  ]);
+  if (addedToday >= MAX_SEARCH_ADDS_PER_DAY) return notTracked("busy");
+  if (activeCount >= Number(env.MAX_TRACKED_GAMES)) return notTracked("full");
 
   if (existing) { // paused earlier for having no players: switch it back on
     await env.DB.prepare("UPDATE games SET active = 1 WHERE universe_id = ?1")
       .bind(stats.universeId).run();
-    return { trackedSince: existing.tracked_since, isTracking: true };
+    return { trackedSince: existing.tracked_since, isTracking: true, notTrackedReason: null };
   }
 
   // Brand new: add it, and save the numbers we just fetched as its first
@@ -176,7 +212,7 @@ async function startTracking(env, stats) {
       "INSERT OR IGNORE INTO events (universe_id, at, kind) VALUES (?1, ?2, 'update')",
     ).bind(stats.universeId, stats.lastUpdated),
   ]);
-  return { trackedSince: now, isTracking: true };
+  return { trackedSince: now, isTracking: true, notTrackedReason: null };
 }
 
 // ---- GET /api/games/:id/history?range= ----------------------------------------
@@ -253,7 +289,7 @@ async function savedJson(env, key, empty) {
   const saved = await env.DB.prepare("SELECT value FROM meta WHERE key = ?1").bind(key).first("value");
   if (!saved) return json(empty, 60);
   return new Response(saved, {
-    headers: { ...CORS, "Content-Type": "application/json", "Cache-Control": "public, max-age=300" },
+    headers: { ...HEADERS, "Content-Type": "application/json", "Cache-Control": "public, max-age=300" },
   });
 }
 
@@ -271,13 +307,29 @@ async function status(env) {
 /** A JSON reply that browsers and Cloudflare may reuse for `maxAgeSeconds` (0 = never). */
 function json(data, maxAgeSeconds) {
   const cacheControl = maxAgeSeconds > 0 ? `public, max-age=${maxAgeSeconds}` : "no-store";
-  return Response.json(data, { headers: { ...CORS, "Cache-Control": cacheControl } });
+  return Response.json(data, { headers: { ...HEADERS, "Cache-Control": cacheControl } });
 }
 
 /** An error reply. Never cached, so a temporary problem isn't remembered. */
-function error(status, message) {
+function error(status, message, extraHeaders = {}) {
   return Response.json({ error: message }, {
     status,
-    headers: { ...CORS, "Cache-Control": "no-store" },
+    headers: { ...HEADERS, "Cache-Control": "no-store", ...extraHeaders },
   });
+}
+
+/**
+ * Asks one of Cloudflare's rate limiters whether this visitor may continue.
+ * If the limiter isn't available (e.g. an older local setup), let the request
+ * through rather than break the site - the database safeguards still apply.
+ */
+async function allowed(limiter, key) {
+  if (!limiter) return true;
+  try {
+    const { success } = await limiter.limit({ key });
+    return success;
+  } catch (err) {
+    console.error("Rate limiter unavailable:", err.message);
+    return true;
+  }
 }
