@@ -1,0 +1,31 @@
+// Cloudflare settings for the backend.
+{
+	"$schema": "node_modules/wrangler/config-schema.json",
+	"name": "roblox-game-tracker",
+	"main": "src/index.js",
+	"compatibility_date": "2026-11-01",
+	// Run scheduled() every 5 minutes.
+	"triggers": {
+		"crons": [
+			"*/5 * * * *"
+		]
+	},
+	// The database. "DB" is the name the code uses (env.DB).
+	"d1_databases": [
+		{
+			"binding": "DB",
+			"database_name": "roblox-tracker",
+			"database_id": "3cc4e0d6-fc36-4467-993b-1ca74ae883bf",
+			"migrations_dir": "migrations"
+		}
+	],
+	"vars": {
+		// Stay inside the free plan's database limits (100,000 writes a day, 500 MB).
+		// Each game costs ~48 writes a day: 24 hourly rows saved + 24 old ones deleted.
+		"MAX_TRACKED_GAMES": "1500"
+	},
+	// Keep logs so failed runs can be investigated in the Cloudflare dashboard.
+	"observability": {
+		"enabled": true
+	}
+}
