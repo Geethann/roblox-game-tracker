@@ -72,15 +72,14 @@ export default function GamePage() {
 
   // Add this game to "Recently viewed" in the search box.
   const [, rememberRecent] = useRecentGames();
-  const loaded = game.data;
+  // Only these four values are saved, so the effect only re-runs if one changes
+  // (not on every minute's refresh of the live numbers).
+  const { universeId: recentId, name: recentName, icon: recentIcon, creatorName: recentCreator } = game.data ?? {};
   useEffect(() => {
-    if (loaded) {
-      rememberRecent({
-        universeId: loaded.universeId, name: loaded.name,
-        icon: loaded.icon, creatorName: loaded.creatorName,
-      });
+    if (recentId) {
+      rememberRecent({ universeId: recentId, name: recentName, icon: recentIcon, creatorName: recentCreator });
     }
-  }, [loaded?.universeId]); // only when a different game loads, not on every refresh
+  }, [recentId, recentName, recentIcon, recentCreator, rememberRecent]);
 
   if (!isValidId || game.error?.status === 404) {
     return <NotFoundPage message="We couldn't find a Roblox game with that ID." />;

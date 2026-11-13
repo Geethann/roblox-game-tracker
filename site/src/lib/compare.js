@@ -1,6 +1,6 @@
 // Comparing games: reading the choice from the address, keeping each game's
 // colour steady, and joining several histories into one chart.
-import { useRef } from "react";
+import { useState } from "react";
 
 export const MAX_OTHERS = 4; // your main game + up to 4 others = 5 lines, the most a chart reads clearly
 export const SLOTS = 5;      // --series-1 ... --series-5 in styles.css
@@ -18,16 +18,29 @@ export function parseIds(text, { without = null, limit = MAX_OTHERS } = {}) {
  * the lowest free slot.
  */
 export function useStableSlots(ids) {
-  const assigned = useRef(new Map());
-  const map = assigned.current;
-  for (const id of [...map.keys()]) if (!ids.includes(id)) map.delete(id); // forget removed games
+  const key = ids.join(",");
+  const [saved, setSaved] = useState(() => ({ key, slots: assignSlots(new Map(), ids) }));
+  // The games changed: work out the new slots from the old ones. Updating
+  // state while drawing like this is React's recommended way to "adjust state
+  // when the inputs change" (it redraws straight away, before showing anything).
+  if (saved.key !== key) {
+    const next = { key, slots: assignSlots(saved.slots, ids) };
+    setSaved(next);
+    return next.slots;
+  }
+  return saved.slots;
+}
+
+/** Keep the slots of games still present; give new games the lowest free slot. */
+export function assignSlots(previous, ids) {
+  const slots = new Map([...previous].filter(([id]) => ids.includes(id))); // forget removed games
   for (const id of ids) {
-    if (!map.has(id)) {
-      const used = new Set(map.values());
-      map.set(id, Array.from({ length: SLOTS }, (_, i) => i + 1).find((slot) => !used.has(slot)) ?? 1);
+    if (!slots.has(id)) {
+      const used = new Set(slots.values());
+      slots.set(id, Array.from({ length: SLOTS }, (_, i) => i + 1).find((slot) => !used.has(slot)) ?? 1);
     }
   }
-  return map;
+  return slots;
 }
 
 /**
