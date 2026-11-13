@@ -2,9 +2,10 @@
 
 const HEADERS = { "User-Agent": "roblox-game-tracker (Cloudflare Worker)" };
 
-// Roblox's limits, measured: 50 games per details request, 100 per votes request.
+// Roblox's limits, measured: 50 games per details request, 100 per votes or icons request.
 const DETAILS_PER_REQUEST = 50;
 const VOTES_PER_REQUEST = 100;
+const ICONS_PER_REQUEST = 100;
 
 /**
  * Download a URL and return the JSON reply.
@@ -78,6 +79,44 @@ export async function fetchFrontPageGames() {
     .flatMap((sort) => sort.games ?? [])
     .filter((game) => game.universeId)
     .map((game) => ({ universeId: game.universeId, rootPlaceId: game.rootPlaceId }));
+}
+
+/**
+ * Search Roblox for games by name, the same search the Roblox website uses.
+ * Adverts (sponsored results) are left out. Like the front-page lists, this
+ * endpoint isn't officially documented, so callers should handle failures.
+ */
+export async function searchGames(query) {
+  const reply = await getJson(
+    "https://apis.roblox.com/search-api/omni-search?pageType=all"
+    + `&searchQuery=${encodeURIComponent(query)}&sessionId=${crypto.randomUUID()}`);
+  return (reply.searchResults ?? [])
+    .flatMap((group) => group.contents ?? [])
+    .filter((item) => item.contentType === "Game" && !item.isSponsored)
+    .map((item) => ({
+      universeId: item.universeId,
+      rootPlaceId: item.rootPlaceId,
+      name: item.name,
+      creatorName: item.creatorName ?? null,
+      playing: item.playerCount ?? null,
+      likes: item.totalUpVotes ?? null,
+      dislikes: item.totalDownVotes ?? null,
+    }));
+}
+
+/**
+ * Icon image links for games, as a Map of universeId -> image URL.
+ * The images themselves load straight from Roblox's image servers;
+ * only this lookup has to go through our backend.
+ */
+export async function fetchIcons(universeIds) {
+  const replies = await Promise.all(chunk(universeIds, ICONS_PER_REQUEST).map((ids) =>
+    getJson("https://thumbnails.roblox.com/v1/games/icons?size=150x150&format=Webp"
+      + `&isCircular=false&returnPolicy=PlaceHolder&universeIds=${ids.join(",")}`)));
+  return new Map(replies
+    .flatMap((reply) => reply.data)
+    .filter((icon) => icon.state === "Completed")
+    .map((icon) => [icon.targetId, icon.imageUrl]));
 }
 
 // ---- small helpers ----

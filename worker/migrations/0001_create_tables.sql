@@ -7,7 +7,7 @@ CREATE TABLE games (
   created_at     INTEGER,                     -- when the game was made on Roblox (unix seconds)
   last_updated   INTEGER,                     -- when the developer last published (unix seconds)
   tracked_since  INTEGER NOT NULL,            -- when WE started recording it (unix seconds)
-  source         TEXT NOT NULL,               -- how it got here: 'seed', 'discovered' or 'search'
+  source         TEXT NOT NULL,               -- how it got here: 'discovered' or 'search'
   active         INTEGER NOT NULL DEFAULT 1   -- 0 = no longer recorded (its history is kept)
 );
 

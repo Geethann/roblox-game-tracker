@@ -12,8 +12,9 @@ export async function discoverGames(env) {
     (await fetchFrontPageGames()).map((game) => [game.universeId, game]),
   ).values()];
 
-  // 2. How many games we track already, and which of these we already have.
-  const total = await env.DB.prepare("SELECT COUNT(*) AS n FROM games").first("n");
+  // 2. How many games we're recording, and which of these we already have.
+  //    Paused games don't count towards the limit.
+  const total = await env.DB.prepare("SELECT COUNT(*) AS n FROM games WHERE active = 1").first("n");
   const { results: existing } = await env.DB.prepare(
     "SELECT universe_id FROM games WHERE universe_id IN (SELECT value FROM json_each(?1))",
   ).bind(JSON.stringify(found.map((game) => game.universeId))).all();
