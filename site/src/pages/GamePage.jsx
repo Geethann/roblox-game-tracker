@@ -4,8 +4,8 @@
 // (e.g. /game/123?range=30d&metric=visits), so a copied link opens exactly
 // the same view for whoever you send it to.
 import { useEffect, useMemo, useState } from "react";
-import { useParams, useSearchParams } from "react-router";
-import { ArrowDown, ArrowUp, Check, ExternalLink, Link2, Star } from "lucide-react";
+import { Link, useParams, useSearchParams } from "react-router";
+import { ArrowDown, ArrowRight, ArrowUp, ExternalLink, GitCompareArrows, Star } from "lucide-react";
 import { useGame, useHistory } from "../lib/api.js";
 import {
   formatCompact, formatDate, formatNumber, formatPercent, likeRatio, timeAgo,
@@ -14,8 +14,10 @@ import {
   DEFAULT_RANGE, RANGES, isMetric, isRange, preparePoints, rangeStart, summarise,
 } from "../lib/history.js";
 import { useMainGame, useNow, useRecentGames } from "../lib/hooks.js";
+import { playersVsMain, ratingVsMain } from "../lib/compare.js";
 import GameIcon from "../components/GameIcon.jsx";
 import InfoTip from "../components/InfoTip.jsx";
+import ShareButton from "../components/ShareButton.jsx";
 import HistoryPanel from "../components/HistoryPanel.jsx";
 import EventTimeline from "../components/EventTimeline.jsx";
 import AboutGame from "../components/AboutGame.jsx";
@@ -103,6 +105,12 @@ export default function GamePage() {
           <h1>{g.name}</h1>
           <p className="muted">by {g.creatorName ?? "unknown creator"}{g.genre && ` · ${g.genre}`}</p>
           <p className="game-dates muted small">
+            {g.rank && (
+              <span className="rank-badge">
+                #{formatNumber(g.rank.position)} most played
+                <span className="muted"> of {formatNumber(g.rank.of)} tracked</span>
+              </span>
+            )}
             <span>Updated {timeAgo(g.lastUpdated, now)}</span>
             {g.trackedSince && (
               <span>
@@ -114,11 +122,14 @@ export default function GamePage() {
         </div>
         <div className="game-actions">
           <MainGameButton game={g} />
+          <CompareButton game={g} />
           <a className="button" href={`https://www.roblox.com/games/${g.rootPlaceId}`} target="_blank" rel="noreferrer">
             Open on Roblox <ExternalLink size={16} aria-hidden="true" />
           </a>
         </div>
       </div>
+
+      <VsMainStrip game={g} />
 
       {!g.isTracking && (
         <Notice>The tracker is full right now, so this game&apos;s history isn&apos;t being recorded. Live numbers still update.</Notice>
@@ -224,23 +235,47 @@ function StatCard({ label, value, exact, footnote, live = false, info, change, c
   );
 }
 
-/** Copies a link to exactly this view (game, range and measure). */
-function ShareButton() {
-  const [copied, setCopied] = useState(false);
-  async function share() {
-    try {
-      await navigator.clipboard.writeText(window.location.href);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    } catch {
-      window.prompt("Copy this link:", window.location.href); // clipboard blocked: let them copy by hand
-    }
-  }
+/** Opens the compare page: against your main game if you have one, otherwise with this game as main. */
+function CompareButton({ game }) {
+  const [mainGame] = useMainGame();
+  const hasOtherMain = mainGame && mainGame.universeId !== game.universeId;
+  const to = hasOtherMain
+    ? `/compare?main=${mainGame.universeId}&with=${game.universeId}`
+    : `/compare?main=${game.universeId}`;
   return (
-    <button type="button" className="button" onClick={share}>
-      {copied ? <Check size={16} aria-hidden="true" /> : <Link2 size={16} aria-hidden="true" />}
-      {copied ? "Link copied" : "Copy link"}
-    </button>
+    <Link to={to} className="button">
+      <GitCompareArrows size={16} aria-hidden="true" /> Compare
+    </Link>
+  );
+}
+
+/** "Compared with your main game: 3.2× the players · rating +1.4 pts" (only when you've picked a different main). */
+function VsMainStrip({ game }) {
+  const [mainGame] = useMainGame();
+  const isOther = mainGame && mainGame.universeId !== game.universeId;
+  const main = useGame(isOther ? mainGame.universeId : null);
+  if (!isOther) return null;
+
+  const m = main.data;
+  return (
+    <div className="vs-main">
+      <span className="vs-main-label">vs your main game</span>
+      <span className="vs-main-game">
+        <GameIcon src={mainGame.icon} size={22} />
+        <span className="vs-main-name">{mainGame.name}</span>
+      </span>
+      {m ? (
+        <>
+          <span><strong>{playersVsMain(game.playing, m.playing)}</strong> the players</span>
+          <span>Rating <strong>{ratingVsMain(likeRatio(game.likes, game.dislikes), likeRatio(m.likes, m.dislikes))}</strong></span>
+        </>
+      ) : (
+        <span className="muted">Loading…</span>
+      )}
+      <Link to={`/compare?main=${mainGame.universeId}&with=${game.universeId}`} className="view-all">
+        Full comparison <ArrowRight size={14} aria-hidden="true" />
+      </Link>
+    </div>
   );
 }
 

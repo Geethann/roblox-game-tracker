@@ -11,6 +11,7 @@ import { Skeleton } from "./components/Feedback.jsx";
 // "lazily" means its code only downloads when someone opens a game, so the
 // home page stays fast. ("Code splitting".)
 const GamePage = lazy(() => import("./pages/GamePage.jsx"));
+const ComparePage = lazy(() => import("./pages/ComparePage.jsx")); // also uses the chart library
 
 export default function App() {
   return (
@@ -21,6 +22,7 @@ export default function App() {
           <Routes>
             <Route path="/" element={<HomePage />} />
             <Route path="/charts" element={<ChartsPage />} />
+            <Route path="/compare" element={<ComparePage />} />
             <Route path="/game/:universeId" element={<GamePage />} />
             <Route path="*" element={<NotFoundPage />} />
           </Routes>

@@ -111,17 +111,24 @@ async function trackedSinceFor(env, ids) {
 // ---- GET /api/games/:id ------------------------------------------------------
 
 async function game(universeId, env) {
-  const [[stats], icons] = await Promise.all([
+  const [[stats], icons, ranks] = await Promise.all([
     fetchGameStats([universeId]),
     fetchIcons([universeId]).catch(() => new Map()),
+    env.DB.prepare("SELECT value FROM meta WHERE key = 'game_ranks'").first("value"),
   ]);
   if (!stats) return error(404, "There's no Roblox game with that ID");
+
+  // "#14 most played of 1,203" and the 24h change, from the hourly charts job.
+  const saved = ranks ? JSON.parse(ranks) : null;
+  const [rank, change24h] = saved?.ranks[universeId] ?? [null, null];
 
   const tracking = await startTracking(env, stats);
   return json({
     ...stats,
     icon: icons.get(universeId) ?? null,
     ...tracking,
+    rank: rank && { position: rank, of: saved.total },
+    change24h,
     fetchedAt: nowSeconds(),
   }, 60);
 }

@@ -152,10 +152,17 @@ export async function updateCharts(env) {
     recentlyUpdated: top((g) => g.lastUpdated),
   };
 
+  // Each game's rank by players online and its 24h change, in a small separate
+  // record ({ id: [rank, change24h] }), so a game page can look up "#14 most
+  // played" without reading the whole charts table.
+  const byPlayers = games.filter((g) => g.playing != null).sort((a, b) => b.playing - a.playing);
+  const ranks = Object.fromEntries(byPlayers.map((g, i) => [g.universeId, [i + 1, g.change24h]]));
+
   const at = nowSeconds();
   await env.DB.batch([
     setMeta(env, "charts", { at, rules: CHART_RULES, games }),
     setMeta(env, "leaderboards", { at, lists }),
+    setMeta(env, "game_ranks", { at, total: byPlayers.length, ranks }),
   ]);
   console.log(`Charts updated: ${games.length} games`);
 }
