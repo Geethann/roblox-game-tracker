@@ -3,6 +3,7 @@ import { lazy, Suspense } from "react";
 import { Route, Routes } from "react-router";
 import Header from "./components/Header.jsx";
 import HomePage from "./pages/HomePage.jsx";
+import ChartsPage from "./pages/ChartsPage.jsx";
 import NotFoundPage from "./pages/NotFoundPage.jsx";
 import { Skeleton } from "./components/Feedback.jsx";
 
@@ -19,6 +20,7 @@ export default function App() {
         <Suspense fallback={<Skeleton height={400} radius={12} />}>
           <Routes>
             <Route path="/" element={<HomePage />} />
+            <Route path="/charts" element={<ChartsPage />} />
             <Route path="/game/:universeId" element={<GamePage />} />
             <Route path="*" element={<NotFoundPage />} />
           </Routes>

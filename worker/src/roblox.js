@@ -72,17 +72,24 @@ export async function fetchGameStats(universeIds) {
 }
 
 /**
- * Every game currently on Roblox's front-page lists (Top Playing Now,
- * Top Trending, Up-and-Coming, ...). Roblox doesn't officially document
- * this endpoint, so it may change; only discovery depends on it.
+ * Roblox's front-page lists (Top Trending, Up-and-Coming, Top Playing Now, ...).
+ * Returns every game on them (for discovery) and each list's order (for the
+ * "Trending on Roblox" chart). Roblox doesn't officially document this
+ * endpoint, so it may change; only discovery depends on it.
  */
-export async function fetchFrontPageGames() {
+export async function fetchFrontPageLists() {
   const reply = await getJson(
     `https://apis.roblox.com/explore-api/v1/get-sorts?sessionId=${crypto.randomUUID()}&device=computer`);
-  return (reply.sorts ?? [])
-    .flatMap((sort) => sort.games ?? [])
-    .filter((game) => game.universeId)
-    .map((game) => ({ universeId: game.universeId, rootPlaceId: game.rootPlaceId }));
+  const lists = (reply.sorts ?? [])
+    .filter((sort) => sort.sortId && sort.games?.length)
+    .map((sort) => ({
+      id: sort.sortId, // e.g. "top-trending"
+      name: sort.sortDisplayName,
+      games: sort.games
+        .filter((game) => game.universeId)
+        .map((game) => ({ universeId: game.universeId, rootPlaceId: game.rootPlaceId })),
+    }));
+  return { lists, games: lists.flatMap((list) => list.games) };
 }
 
 /**

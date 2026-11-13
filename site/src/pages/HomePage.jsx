@@ -1,34 +1,47 @@
 // Home: the visitor's main game (if they've picked one) and the four charts.
 import { Link } from "react-router";
-import { Clock, Flame, TrendingUp, Users, X } from "lucide-react";
+import { ArrowRight, Clock, Flame, Sparkles, ThumbsUp, TrendingUp, Users, X } from "lucide-react";
 import { useGame, useLeaderboards } from "../lib/api.js";
 import { formatCompact, formatPercent, timeAgo } from "../lib/format.js";
 import { useMainGame, useNow } from "../lib/hooks.js";
 import GameIcon from "../components/GameIcon.jsx";
 import { ErrorState, Skeleton } from "../components/Feedback.jsx";
 
-// Each list: where its data is, how to show its number, and what to say when it's empty.
+// Each list: where its data is, which charts page "View all" opens,
+// how to show its number, and what to say when it's empty.
+const NEEDS_A_DAY = "Needs 24 hours of history. Check back tomorrow.";
 const LISTS = [
   {
-    key: "mostPlayed", title: "Most played", icon: Users,
+    key: "mostPlayed", view: "most-played", title: "Most played", icon: Users,
     hint: "Players online right now",
     show: (game) => `${formatCompact(game.value)} playing`,
   },
   {
-    key: "mostVisits24h", title: "Most visits today", icon: Flame,
-    hint: "New visits in the last 24 hours",
-    show: (game) => `+${formatCompact(game.value)}`,
-    empty: "Needs 24 hours of history. Check back tomorrow.",
+    key: "trendingOnRoblox", view: "trending-on-roblox", title: "Trending on Roblox", icon: Sparkles,
+    hint: "Roblox's own Trending list, in Roblox's order",
+    show: (game) => `${formatCompact(game.playing)} playing`,
+    empty: "Roblox's list arrives with the next hourly update.",
   },
   {
-    key: "trending", title: "Trending", icon: TrendingUp,
+    key: "rising", view: "rising", title: "Rising", icon: TrendingUp,
     hint: "Biggest rise in players vs. this time yesterday",
     show: (game) => formatPercent(game.value, { signed: true }),
     positive: true,
-    empty: "Needs 24 hours of history. Check back tomorrow.",
+    empty: NEEDS_A_DAY,
   },
   {
-    key: "recentlyUpdated", title: "Recently updated", icon: Clock,
+    key: "mostVisits24h", view: "visits-today", title: "Most visits today", icon: Flame,
+    hint: "New visits in the last 24 hours",
+    show: (game) => `+${formatCompact(game.value)}`,
+    empty: NEEDS_A_DAY,
+  },
+  {
+    key: "topRated", view: "top-rated", title: "Top rated", icon: ThumbsUp,
+    hint: "Highest share of likes (popular games only)",
+    show: (game) => formatPercent(game.value),
+  },
+  {
+    key: "recentlyUpdated", view: "recently-updated", title: "Recently updated", icon: Clock,
     hint: "Latest updates published by developers",
     show: (game, now) => timeAgo(game.value, now),
   },
@@ -76,7 +89,12 @@ function Leaderboard({ list, games, loading, now }) {
   const Icon = list.icon;
   return (
     <div className="card leaderboard">
-      <h3><Icon size={18} aria-hidden="true" /> {list.title}</h3>
+      <div className="leaderboard-head">
+        <h3><Icon size={18} aria-hidden="true" /> {list.title}</h3>
+        <Link to={`/charts?view=${list.view}`} className="view-all" aria-label={`View all: ${list.title}`}>
+          View all <ArrowRight size={14} aria-hidden="true" />
+        </Link>
+      </div>
       <p className="muted small">{list.hint}</p>
       {loading ? (
         <div className="leaderboard-skeleton">

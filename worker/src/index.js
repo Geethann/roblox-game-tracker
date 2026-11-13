@@ -6,7 +6,12 @@
 import { handleApi } from "./api.js";
 import { collectSlice, SLICES } from "./collect.js";
 import { discoverGames } from "./discover.js";
-import { dailyMaintenance, updateLeaderboards } from "./maintenance.js";
+import { dailyMaintenance, updateCharts } from "./maintenance.js";
+
+const CHARTS_SLICE = 0;       // :00 - rebuild the charts / home page lists
+const DISCOVERY_SLICE = 6;    // :30 - look for new games (kept apart from the charts job,
+                              //       so each run stays well inside the free plan's CPU limit)
+const MAINTENANCE_SLICE = 1;  // 00:05 UTC - nightly summaries and tidy-up
 
 export default {
   async scheduled(controller, env) {
@@ -15,16 +20,15 @@ export default {
 
     await collectSlice(env, slice, now);
 
-    // Hourly at :00 - refresh the home page lists, then look for new games.
-    // Discovery goes last: if Roblox's front-page lists ever break, everything
-    // else has already been saved. It also runs whenever no games are tracked
-    // yet, so a brand-new database fills itself straight away.
-    if (slice === 0) await updateLeaderboards(env);
-    const isEmpty = (await env.DB.prepare("SELECT 1 FROM games LIMIT 1").first()) === null;
-    if (slice === 0 || isEmpty) await discoverGames(env);
+    if (slice === CHARTS_SLICE) await updateCharts(env);
 
-    // Daily at 00:05 UTC - summarise yesterday and tidy up.
-    if (slice === 1 && now.getUTCHours() === 0) await dailyMaintenance(env, now);
+    // Discovery also runs whenever no games are tracked yet, so a brand-new
+    // database fills itself straight away. It goes after everything else: if
+    // Roblox's front-page lists ever break, the rest has already been saved.
+    const isEmpty = (await env.DB.prepare("SELECT 1 FROM games LIMIT 1").first()) === null;
+    if (slice === DISCOVERY_SLICE || isEmpty) await discoverGames(env);
+
+    if (slice === MAINTENANCE_SLICE && now.getUTCHours() === 0) await dailyMaintenance(env, now);
   },
 
   async fetch(request, env, ctx) {

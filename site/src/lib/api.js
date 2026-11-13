@@ -61,6 +61,16 @@ export function useHistory(universeId, range) {
   });
 }
 
+/** Every tracked game's latest numbers, for the full chart tables. Rebuilt hourly by the backend. */
+export function useCharts() {
+  return useQuery({
+    queryKey: ["charts"],
+    queryFn: () => getJson("/api/charts"),
+    staleTime: 5 * 60_000,
+    refetchInterval: 10 * 60_000,
+  });
+}
+
 /** The home page lists, refreshed every 5 minutes. */
 export function useLeaderboards() {
   return useQuery({

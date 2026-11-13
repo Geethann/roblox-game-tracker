@@ -1,16 +1,16 @@
-// Finds new games to track from Roblox's front-page lists.
+// Finds new games to track from Roblox's front-page lists, and remembers the
+// order of those lists for the "Trending on Roblox" chart.
 
-import { fetchFrontPageGames } from "./roblox.js";
+import { fetchFrontPageLists } from "./roblox.js";
 import { nowSeconds, setMeta } from "./db.js";
 
 export async function discoverGames(env) {
   const maxGames = Number(env.MAX_TRACKED_GAMES);
+  const { lists, games } = await fetchFrontPageLists();
 
-  // 1. Everything on the front page right now, without duplicates
+  // 1. Every game on the front page right now, without duplicates
   //    (the same game often appears in several lists).
-  const found = [...new Map(
-    (await fetchFrontPageGames()).map((game) => [game.universeId, game]),
-  ).values()];
+  const found = [...new Map(games.map((game) => [game.universeId, game])).values()];
 
   // 2. How many games we're recording, and which of these we already have.
   //    Paused games don't count towards the limit.
@@ -29,6 +29,14 @@ export async function discoverGames(env) {
     `INSERT OR IGNORE INTO games (universe_id, root_place_id, tracked_since, source)
      VALUES (?1, ?2, ?3, 'discovered')`,
   ).bind(game.universeId, game.rootPlaceId, now));
+
+  // 4. Remember each list's order: { "top-trending": { name, ids: [...] }, ... }
+  statements.push(setMeta(env, "roblox_lists", {
+    at: now,
+    lists: Object.fromEntries(lists.map((list) => [
+      list.id, { name: list.name, ids: list.games.map((game) => game.universeId) },
+    ])),
+  }));
   statements.push(setMeta(env, "last_discover", { at: now, found: found.length, added: newGames.length }));
   await env.DB.batch(statements);
 
