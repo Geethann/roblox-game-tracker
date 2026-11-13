@@ -16,7 +16,7 @@ export async function collectSlice(env, slice, now) {
 
   // 1. Which games are in this slice, and what did we last know about them?
   const { results: games } = await env.DB.prepare(
-    `SELECT universe_id, name, last_updated, created_at
+    `SELECT universe_id, name, last_updated, created_at, genre
        FROM games
       WHERE active = 1 AND universe_id % ${SLICES} = ?1`,
   ).bind(slice).all();
@@ -55,14 +55,15 @@ export async function collectSlice(env, slice, now) {
     // database writes are what the free plan limits most.
     const changed = game.name !== old.name
       || game.lastUpdated !== old.last_updated
+      || game.genre !== old.genre
       || old.created_at === null;
     if (changed) {
       statements.push(env.DB.prepare(
         `UPDATE games SET name = ?2, root_place_id = ?3, creator_name = ?4,
-                          created_at = ?5, last_updated = ?6
+                          created_at = ?5, last_updated = ?6, genre = ?7
           WHERE universe_id = ?1`,
       ).bind(game.universeId, game.name, game.rootPlaceId, game.creatorName,
-             game.createdAt, game.lastUpdated));
+             game.createdAt, game.lastUpdated, game.genre));
     }
   }
 

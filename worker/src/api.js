@@ -3,7 +3,8 @@
 //   GET /api/search?q=blox             find any Roblox game by name
 //   GET /api/games/123                 one game's details and live numbers
 //   GET /api/games/123/history?range=7d   chart data + update markers
-//   GET /api/leaderboards              the home page lists
+//   GET /api/leaderboards              the home page lists (top 20 of each)
+//   GET /api/charts                    every tracked game, for the full chart tables
 //   GET /api/status                    is the tracker healthy?
 
 import { fetchGameStats, fetchIcons, searchGames } from "./roblox.js";
@@ -47,6 +48,7 @@ async function route(url, env) {
   const path = url.pathname.replace(/\/+$/, ""); // ignore a trailing slash
   if (path === "/api/search") return search(url.searchParams.get("q"), env);
   if (path === "/api/leaderboards") return leaderboards(env);
+  if (path === "/api/charts") return charts(env);
   if (path === "/api/status") return status(env);
 
   let match = path.match(/^\/api\/games\/(\d{1,15})$/);
@@ -225,11 +227,27 @@ const DAILY_POINTS = `
    WHERE agg.day NOT IN (SELECT day FROM daily WHERE universe_id = ?1 AND day >= ?2)
   ORDER BY t`;
 
-// ---- GET /api/leaderboards and /api/status ------------------------------------
+// ---- GET /api/leaderboards, /api/charts and /api/status ------------------------
 
 async function leaderboards(env) {
-  const saved = await env.DB.prepare("SELECT value FROM meta WHERE key = 'leaderboards'").first("value");
-  return json(saved ? JSON.parse(saved) : { at: null, lists: {} }, 300);
+  return savedJson(env, "leaderboards", { at: null, lists: {} });
+}
+
+async function charts(env) {
+  return savedJson(env, "charts", { at: null, rules: {}, games: [] });
+}
+
+/**
+ * Sends a result the hourly job already saved. It's sent exactly as stored:
+ * no unpacking and re-packing, which matters for the charts table (hundreds
+ * of KB) because the free plan only allows a few milliseconds of work per request.
+ */
+async function savedJson(env, key, empty) {
+  const saved = await env.DB.prepare("SELECT value FROM meta WHERE key = ?1").bind(key).first("value");
+  if (!saved) return json(empty, 60);
+  return new Response(saved, {
+    headers: { ...CORS, "Content-Type": "application/json", "Cache-Control": "public, max-age=300" },
+  });
 }
 
 async function status(env) {

@@ -66,65 +66,96 @@ export async function dailyMaintenance(env, now) {
   console.log("Daily maintenance:", JSON.stringify(summary));
 }
 
+
+// The rules for the lists, in one place. They're also sent to the site with
+// the charts data, so the site's "View all" pages always match the home page.
+export const CHART_RULES = {
+  risingMinPlayers: 100,   // "Rising" ignores games under 100 players yesterday: 2 -> 10 isn't a trend
+  topRatedMinVotes: 1000,  // "Top rated" needs enough votes for the rating to mean something...
+  topRatedMinPlayers: 100, // ...and enough players to still be relevant
+};
+
 /**
- * Runs hourly. Works out the home page lists once and saves them, so the
- * home page loads with a single tiny database read instead of crunching
- * every game for every visitor.
+ * Runs hourly. Builds two things and saves them, so visitors get a ready-made
+ * answer with one tiny database read instead of crunching every game each time:
+ *   "charts"       - one row per tracked game: the full tables on the charts pages
+ *   "leaderboards" - the top 20 of each list, for the home page
  */
-export async function updateLeaderboards(env) {
+export async function updateCharts(env) {
   // Each active game's latest row, plus its row from exactly 24 hours before
   // (same time of day, so daily ups and downs don't skew the comparison).
-  const { results } = await env.DB.prepare(`
-    SELECT g.universe_id, g.name, g.creator_name, g.last_updated,
-           cur.hour, cur.playing, cur.visits,
-           ago.playing AS playing_24h_ago, ago.visits AS visits_24h_ago
-      FROM games g
-      JOIN snapshots cur
-        ON cur.universe_id = g.universe_id
-       AND cur.hour = (SELECT MAX(hour) FROM snapshots WHERE universe_id = g.universe_id)
-      LEFT JOIN snapshots ago
-        ON ago.universe_id = g.universe_id AND ago.hour = cur.hour - ${DAY}
-     WHERE g.active = 1 AND g.name IS NOT NULL`,
-  ).all();
+  const [{ results }, savedLists] = await Promise.all([
+    env.DB.prepare(`
+      SELECT g.universe_id, g.name, g.creator_name, g.genre, g.last_updated, g.tracked_since,
+             cur.hour, cur.playing, cur.visits, cur.favorites, cur.likes, cur.dislikes,
+             ago.playing AS playing_24h_ago, ago.visits AS visits_24h_ago
+        FROM games g
+        JOIN snapshots cur
+          ON cur.universe_id = g.universe_id
+         AND cur.hour = (SELECT MAX(hour) FROM snapshots WHERE universe_id = g.universe_id)
+        LEFT JOIN snapshots ago
+          ON ago.universe_id = g.universe_id AND ago.hour = cur.hour - ${DAY}
+       WHERE g.active = 1 AND g.name IS NOT NULL`,
+    ).all(),
+    env.DB.prepare("SELECT value FROM meta WHERE key = 'roblox_lists'").first("value"),
+  ]);
+
+  // Roblox's own Trending list, as positions: universeId -> 1, 2, 3...
+  const trendingIds = savedLists ? JSON.parse(savedLists).lists["top-trending"]?.ids ?? [] : [];
+  const trendingRank = new Map(trendingIds.map((id, i) => [id, i + 1]));
 
   // Ignore games whose newest row is old (e.g. deleted from Roblox).
   const fresh = results.filter((row) => row.hour >= nowSeconds() - 2 * 3600);
+  const icons = await fetchIcons(fresh.map((row) => row.universe_id)).catch(() => new Map());
 
-  // `value` is the number that list is ranked by (players, visits gained, ...).
-  const item = (row, value) => ({
-    universeId: row.universe_id,
-    name: row.name,
-    creatorName: row.creator_name,
-    playing: row.playing,
-    lastUpdated: row.last_updated,
-    value,
+  const games = fresh.map((row) => {
+    const votes = (row.likes ?? 0) + (row.dislikes ?? 0);
+    return {
+      universeId: row.universe_id,
+      name: row.name,
+      creatorName: row.creator_name,
+      genre: row.genre,
+      icon: icons.get(row.universe_id) ?? null,
+      playing: row.playing,
+      playing24hAgo: row.playing_24h_ago,
+      change24h: row.playing_24h_ago > 0 ? (row.playing - row.playing_24h_ago) / row.playing_24h_ago : null,
+      visits: row.visits,
+      visits24h: row.visits_24h_ago == null ? null : row.visits - row.visits_24h_ago,
+      favorites: row.favorites,
+      rating: votes > 0 ? row.likes / votes : null,
+      votes,
+      lastUpdated: row.last_updated,
+      trackedSince: row.tracked_since,
+      robloxTrendingRank: trendingRank.get(row.universe_id) ?? null,
+    };
   });
-  const top = (rows, score) => rows
-    .map((row) => ({ row, value: score(row) }))
-    .filter((entry) => entry.value !== null)
-    .sort((a, b) => b.value - a.value)
+
+  // The home page lists: the top 20 of each, using the same rules as the charts pages.
+  // `value` is the number that list is ranked by.
+  const top = (score, ascending = false) => games
+    .map((game) => ({ game, value: score(game) }))
+    .filter((entry) => entry.value != null)
+    .sort((a, b) => (ascending ? a.value - b.value : b.value - a.value))
     .slice(0, LIST_SIZE)
-    .map((entry) => item(entry.row, entry.value));
+    .map(({ game, value }) => ({
+      universeId: game.universeId, name: game.name, creatorName: game.creatorName,
+      icon: game.icon, playing: game.playing, value,
+    }));
 
   const lists = {
-    // Most players online right now.
-    mostPlayed: top(fresh, (row) => row.playing),
-    // Most new visits in the last 24 hours.
-    mostVisits24h: top(fresh, (row) =>
-      row.visits_24h_ago === null ? null : row.visits - row.visits_24h_ago),
-    // Biggest % rise in players vs. this time yesterday. Games under 100
-    // players are skipped: going from 2 to 10 players isn't a real trend.
-    trending: top(fresh, (row) =>
-      row.playing_24h_ago >= 100 ? (row.playing - row.playing_24h_ago) / row.playing_24h_ago : null),
-    // Most recently updated by their developers.
-    recentlyUpdated: top(fresh, (row) => row.last_updated),
+    mostPlayed: top((g) => g.playing),
+    trendingOnRoblox: top((g) => g.robloxTrendingRank, true), // Roblox's order: 1 first
+    rising: top((g) => (g.playing24hAgo >= CHART_RULES.risingMinPlayers ? g.change24h : null)),
+    mostVisits24h: top((g) => g.visits24h),
+    topRated: top((g) => (g.votes >= CHART_RULES.topRatedMinVotes
+      && g.playing >= CHART_RULES.topRatedMinPlayers ? g.rating : null)),
+    recentlyUpdated: top((g) => g.lastUpdated),
   };
 
-  // Add icons in one request (every list's games together, without duplicates).
-  const ids = [...new Set(Object.values(lists).flat().map((game) => game.universeId))];
-  const icons = await fetchIcons(ids).catch(() => new Map()); // icons are nice-to-have
-  for (const game of Object.values(lists).flat()) game.icon = icons.get(game.universeId) ?? null;
-
-  await setMeta(env, "leaderboards", { at: nowSeconds(), lists }).run();
-  console.log(`Leaderboards updated from ${fresh.length} games`);
+  const at = nowSeconds();
+  await env.DB.batch([
+    setMeta(env, "charts", { at, rules: CHART_RULES, games }),
+    setMeta(env, "leaderboards", { at, lists }),
+  ]);
+  console.log(`Charts updated: ${games.length} games`);
 }
