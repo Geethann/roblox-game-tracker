@@ -19,6 +19,23 @@
 			"migrations_dir": "migrations"
 		}
 	],
+	// Rate limits, counted per visitor (by IP address) and per Cloudflare location.
+	// They're deliberately generous: many people can share one IP (a school, a
+	// phone network), so these only catch scripts, not real visitors.
+	"ratelimits": [
+		{
+			// Any API request: 300 a minute (normal browsing uses ~10-20).
+			"name": "API_LIMITER",
+			"namespace_id": "1001",
+			"simple": { "limit": 300, "period": 60 }
+		},
+		{
+			// Adding a new game to the tracker: 10 a minute.
+			"name": "TRACK_LIMITER",
+			"namespace_id": "1002",
+			"simple": { "limit": 10, "period": 60 }
+		}
+	],
 	"vars": {
 		// Stay inside the free plan's database limits (100,000 writes a day, 500 MB).
 		// Each game costs ~48 writes a day: 24 hourly rows saved + 24 old ones deleted.

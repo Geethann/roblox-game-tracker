@@ -29,7 +29,7 @@ export default function AboutPage() {
       <h2>Which games are tracked</h2>
       <ul>
         <li>Every hour, the tracker adds the games on Roblox&apos;s front-page lists (Top Playing, Trending, Up-and-Coming and others).</li>
-        <li>Opening any game&apos;s page here adds that game too, so smaller games get tracked as soon as someone looks them up.</li>
+        <li>Opening any game&apos;s page here adds that game too, so smaller games get tracked as soon as someone looks them up. To stop the tracker filling up with empty games, a game needs at least one player online or 1,000 visits, and only a limited number of games can be added this way each day.</li>
         <li>Up to 1,500 games are tracked at once. Games with no players for 30 days are paused to make room; their history is kept, and they resume if someone opens them again.</li>
       </ul>
       <p>

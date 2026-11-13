@@ -51,6 +51,14 @@ flowchart LR
 - **Accessible by default.** Keyboard navigation, screen-reader labels (search combobox, `aria-sort` on tables, chart table views), reduced motion support, and visible focus outlines.
 - **`main` is what's live.** Every change goes through a pull request: code checks, tests and a build must pass before merging, and merging deploys automatically.
 
+## Security
+
+- **No personal data.** No accounts, passwords or cookies; preferences stay in the visitor's browser.
+- **Abuse protection.** Cloudflare rate limits per visitor on the API, plus safeguards on adding games: a game needs at least one player or 1,000 visits, one visitor can add 10 a minute, and at most 200 a day can be added through search.
+- **Safe input handling.** All SQL uses bound parameters; IDs, ranges and searches are validated against strict patterns; untrusted text (game names and descriptions) is always rendered as plain text; CSV exports neutralise spreadsheet formulas.
+- **Browser protections.** A Content Security Policy limits where the site may load code, data, images and fonts from (the one inline script is allowed by its hash). API replies send `nosniff`, a locked-down CSP and `no-referrer`.
+- **Secrets and supply chain.** The Cloudflare token lives in GitHub secrets with only the permissions it needs and an expiry date. Dependabot watches packages and GitHub Actions, and every change to `main` must pass the checks in a pull request.
+
 ## Tech stack
 
 | Part | Built with |
