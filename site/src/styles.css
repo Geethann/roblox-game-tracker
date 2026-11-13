@@ -1,0 +1,267 @@
+/* =============================================================================
+   Design tokens: every colour, size and font is defined once here.
+   light-dark(A, B) picks A in light mode and B in dark mode, so each colour
+   is written once for both themes.
+   ============================================================================= */
+:root {
+  color-scheme: light dark; /* follow the device setting by default */
+
+  --bg:           light-dark(#f6f7f9, #0b0d12);
+  --surface:      light-dark(#ffffff, #13161d);
+  --surface-2:    light-dark(#f1f3f6, #1b1f28);
+  --border:       light-dark(#e3e6eb, #252b36);
+  --text:         light-dark(#0f172a, #e7eaf0);
+  --text-muted:   light-dark(#5b6474, #8e97a8);
+  --accent:       light-dark(#4f46e5, #8b93ff);
+  --accent-soft:  light-dark(#eef0ff, #20244a);
+  --positive:     light-dark(#15803d, #4ade80);
+  --negative:     light-dark(#b91c1c, #f87171);
+  --notice-bg:    light-dark(#eff6ff, #14213a);
+  --notice-text:  light-dark(#1e3a8a, #bfd4ff);
+  --skeleton:     light-dark(#e9ecf1, #1f242e);
+  --shadow:       0 1px 2px rgb(0 0 0 / 0.06), 0 4px 16px rgb(0 0 0 / 0.04);
+
+  --radius: 12px;
+  --font: "Inter Variable", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+/* A choice made with the light/dark button overrides the device setting. */
+:root[data-theme="light"] { color-scheme: light; }
+:root[data-theme="dark"]  { color-scheme: dark; }
+
+/* =============================================================================
+   Basics
+   ============================================================================= */
+*, *::before, *::after { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 15px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1, h2, h3 { margin: 0; line-height: 1.2; letter-spacing: -0.01em; }
+h1 { font-size: clamp(1.6rem, 1.2rem + 1.5vw, 2.2rem); font-weight: 700; }
+h2 { font-size: 1.2rem; font-weight: 650; }
+h3 { font-size: 1rem; font-weight: 650; }
+p  { margin: 0; }
+a  { color: inherit; text-decoration: none; }
+
+/* Numbers line up neatly when every digit is the same width. */
+.stat-value, .leaderboard-value, .rank, .search-option-meta { font-variant-numeric: tabular-nums; }
+
+.muted { color: var(--text-muted); }
+.small { font-size: 0.85rem; }
+
+/* A clear outline for keyboard users, but not when clicking with a mouse. */
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.container {
+  width: 100%;
+  max-width: 1200px;
+  margin-inline: auto;
+  padding-inline: 16px;
+}
+@media (min-width: 768px) { .container { padding-inline: 24px; } }
+
+.app { min-height: 100vh; display: flex; flex-direction: column; }
+.page { flex: 1; padding-block: 24px 48px; display: grid; gap: 24px; align-content: start; }
+
+/* =============================================================================
+   Buttons, cards, badges
+   ============================================================================= */
+.button {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 8px 14px;
+  border: 1px solid var(--border); border-radius: 10px;
+  background: var(--surface); color: var(--text);
+  font: inherit; font-weight: 550; font-size: 0.9rem;
+  cursor: pointer; white-space: nowrap;
+  transition: background 0.15s, border-color 0.15s;
+}
+.button:hover { background: var(--surface-2); }
+.button-active { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
+.button-active:hover { background: var(--accent-soft); }
+
+.icon-button {
+  display: inline-grid; place-items: center;
+  width: 38px; height: 38px; flex-shrink: 0;
+  border: 1px solid var(--border); border-radius: 10px;
+  background: var(--surface); color: var(--text-muted);
+  cursor: pointer;
+}
+.icon-button:hover { color: var(--text); background: var(--surface-2); }
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 16px;
+}
+
+.badge {
+  flex-shrink: 0;
+  padding: 2px 8px; border-radius: 999px;
+  background: var(--accent-soft); color: var(--accent);
+  font-size: 0.72rem; font-weight: 600;
+}
+
+/* =============================================================================
+   Header and search
+   ============================================================================= */
+.site-header {
+  position: sticky; top: 0; z-index: 10;
+  background: color-mix(in srgb, var(--bg) 85%, transparent);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--border);
+}
+.header-inner { display: flex; align-items: center; gap: 12px; height: 64px; }
+
+.brand { display: flex; align-items: center; gap: 10px; font-weight: 700; flex-shrink: 0; }
+.brand-mark {
+  display: grid; place-items: center;
+  width: 32px; height: 32px; border-radius: 9px;
+  background: var(--accent); color: #fff;
+}
+@media (max-width: 720px) { .brand-name { display: none; } } /* logo only on phones */
+
+.search { position: relative; flex: 1; max-width: 560px; margin-inline: auto; }
+.search-icon { position: absolute; left: 12px; top: 50%; translate: 0 -50%; color: var(--text-muted); pointer-events: none; }
+.search-input {
+  width: 100%; height: 40px;
+  padding: 0 36px 0 38px;
+  border: 1px solid var(--border); border-radius: 10px;
+  background: var(--surface); color: var(--text);
+  font: inherit;
+}
+.search-input::placeholder { color: var(--text-muted); }
+.search-input::-webkit-search-cancel-button { display: none; }
+.search-input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.search-shortcut {
+  position: absolute; right: 10px; top: 50%; translate: 0 -50%;
+  padding: 0 6px; border: 1px solid var(--border); border-radius: 5px;
+  color: var(--text-muted); font: 0.75rem/1.5 var(--font);
+}
+.search:focus-within .search-shortcut { display: none; }
+@media (hover: none) { .search-shortcut { display: none; } } /* no keyboard on touch screens */
+
+.search-panel {
+  position: absolute; top: calc(100% + 6px); left: 0; right: 0;
+  max-height: min(440px, 70vh); overflow-y: auto;
+  background: var(--surface);
+  border: 1px solid var(--border); border-radius: var(--radius);
+  box-shadow: 0 12px 32px rgb(0 0 0 / 0.18);
+  padding: 6px;
+}
+.search-heading { padding: 6px 10px; font-size: 0.75rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.04em; }
+.search-message { padding: 12px 10px; color: var(--text-muted); font-size: 0.9rem; }
+.search-panel ul { list-style: none; margin: 0; padding: 0; transition: opacity 0.15s; }
+.search-panel ul.is-updating { opacity: 0.55; }
+.search-option {
+  display: flex; align-items: center; gap: 12px;
+  padding: 8px 10px; border-radius: 8px; cursor: pointer;
+}
+.search-option[aria-selected="true"] { background: var(--surface-2); }
+.search-option-text { display: grid; min-width: 0; flex: 1; }
+.search-option-name, .search-option-meta { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.search-option-name { font-weight: 550; }
+.search-option-meta { font-size: 0.8rem; color: var(--text-muted); }
+
+/* =============================================================================
+   Shared bits: icons, loading, errors, notices, live dot
+   ============================================================================= */
+.game-icon { border-radius: 22%; object-fit: cover; flex-shrink: 0; background: var(--surface-2); }
+.game-icon-placeholder { display: inline-grid; place-items: center; color: var(--text-muted); }
+
+.skeleton {
+  display: block;
+  background: linear-gradient(90deg, var(--skeleton) 0%, var(--surface-2) 50%, var(--skeleton) 100%);
+  background-size: 200% 100%;
+  animation: shimmer 1.4s ease-in-out infinite;
+}
+@keyframes shimmer { from { background-position: 200% 0; } to { background-position: -200% 0; } }
+
+.error-state { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; color: var(--negative); }
+.error-state p { flex: 1; color: var(--text); }
+
+.notice {
+  display: flex; gap: 10px; align-items: flex-start;
+  padding: 12px 14px; border-radius: var(--radius);
+  background: var(--notice-bg); color: var(--notice-text);
+}
+.notice svg { flex-shrink: 0; margin-top: 2px; }
+
+.live-dot {
+  display: inline-block; width: 8px; height: 8px; margin-right: 6px;
+  border-radius: 50%; background: var(--positive);
+  animation: pulse 2s ease-in-out infinite;
+  vertical-align: 1px;
+}
+@keyframes pulse { 50% { opacity: 0.35; } }
+
+/* Respect visitors who've asked their device for less motion. */
+@media (prefers-reduced-motion: reduce) {
+  .skeleton, .live-dot { animation: none; }
+}
+
+/* =============================================================================
+   Home page
+   ============================================================================= */
+.hero { display: grid; gap: 6px; padding-top: 8px; }
+.hero p { color: var(--text-muted); font-size: 1.05rem; }
+
+.section-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+
+/* Two columns on wide screens (a 2x2 grid of lists), one on phones. */
+.leaderboards { display: grid; gap: 16px; grid-template-columns: repeat(auto-fill, minmax(min(100%, 420px), 1fr)); }
+.leaderboard { display: flex; flex-direction: column; min-width: 0; }
+.leaderboard h3 { display: flex; align-items: center; gap: 8px; }
+.leaderboard h3 svg { color: var(--accent); }
+.leaderboard > p { margin-top: 2px; }
+/* minmax(0, 1fr) lets rows shrink to the card's width, so long names get
+   cut off with "…" instead of pushing the numbers outside the card. */
+.leaderboard-list { list-style: none; margin: 12px 0 0; padding: 0; display: grid; grid-template-columns: minmax(0, 1fr); gap: 2px; }
+.leaderboard-skeleton { display: grid; gap: 8px; margin-top: 12px; }
+.leaderboard-row {
+  display: flex; align-items: center; gap: 10px;
+  padding: 6px 8px; margin-inline: -8px; border-radius: 8px;
+}
+.leaderboard-row:hover { background: var(--surface-2); }
+.rank { width: 1.5em; text-align: right; color: var(--text-muted); font-size: 0.85rem; flex-shrink: 0; }
+.leaderboard-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
+.leaderboard-value { color: var(--text-muted); font-size: 0.85rem; flex-shrink: 0; }
+.leaderboard-value.positive { color: var(--positive); font-weight: 600; }
+.empty { flex: 1; display: grid; place-items: center; margin-top: 12px; padding: 24px 8px; text-align: center; color: var(--text-muted); font-size: 0.9rem; }
+
+.main-game-card { display: grid; gap: 10px; }
+.main-game-label { font-size: 0.75rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: var(--accent); }
+.main-game-body { display: flex; align-items: center; gap: 12px; }
+.main-game-link { display: flex; align-items: center; gap: 14px; flex: 1; min-width: 0; }
+.main-game-link > span { display: grid; min-width: 0; }
+.main-game-name { font-weight: 650; font-size: 1.1rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* =============================================================================
+   Game page
+   ============================================================================= */
+.game-header { display: flex; flex-wrap: wrap; align-items: center; gap: 16px 20px; }
+.game-title { flex: 1; min-width: min(100%, 260px); display: grid; gap: 4px; }
+.game-title h1 { overflow-wrap: anywhere; }
+.game-dates { display: flex; flex-wrap: wrap; gap: 4px 16px; margin-top: 4px; }
+.game-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+
+.stat-grid { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 200px), 1fr)); }
+.stat { display: grid; gap: 4px; align-content: start; }
+.stat-label { font-size: 0.85rem; color: var(--text-muted); font-weight: 500; }
+.stat-value { font-size: 1.75rem; font-weight: 700; letter-spacing: -0.02em; }
+.stat-footnote { font-size: 0.8rem; color: var(--text-muted); }
+
+.not-found { display: grid; gap: 12px; justify-items: start; padding-block: 48px; }
+
+/* =============================================================================
+   Footer
+   ============================================================================= */
+.site-footer { border-top: 1px solid var(--border); padding-block: 20px; color: var(--text-muted); font-size: 0.8rem; }
