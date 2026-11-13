@@ -218,3 +218,6 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Collected data lives on the separate "data" branch, never on code branches
+data/
