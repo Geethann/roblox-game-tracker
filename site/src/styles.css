@@ -19,6 +19,11 @@
   --notice-bg:    light-dark(#eff6ff, #14213a);
   --notice-text:  light-dark(#1e3a8a, #bfd4ff);
   --skeleton:     light-dark(#e9ecf1, #1f242e);
+  --grid:         light-dark(#eceef2, #1f242d);  /* chart gridlines: one step off the card colour */
+  --marker:       light-dark(#9aa3b2, #59627a);  /* update markers on charts */
+  /* Chart data colour: slot 1 of a colour-blind-safe palette, checked against
+     our card colours in both modes (contrast >= 3:1). */
+  --series-1:     light-dark(#2a78d6, #3987e5);
   --shadow:       0 1px 2px rgb(0 0 0 / 0.06), 0 4px 16px rgb(0 0 0 / 0.04);
 
   --radius: 12px;
@@ -50,8 +55,10 @@ h3 { font-size: 1rem; font-weight: 650; }
 p  { margin: 0; }
 a  { color: inherit; text-decoration: none; }
 
-/* Numbers line up neatly when every digit is the same width. */
-.stat-value, .leaderboard-value, .rank, .search-option-meta { font-variant-numeric: tabular-nums; }
+/* Numbers in columns line up neatly when every digit is the same width.
+   (Big standalone numbers keep normal digits: equal widths look loose when large.) */
+.leaderboard-value, .rank, .search-option-meta, .data-table .num,
+.recharts-cartesian-axis-tick-value { font-variant-numeric: tabular-nums; }
 
 .muted { color: var(--text-muted); }
 .small { font-size: 0.85rem; }
@@ -259,7 +266,123 @@ a  { color: inherit; text-decoration: none; }
 .stat-value { font-size: 1.75rem; font-weight: 700; letter-spacing: -0.02em; }
 .stat-footnote { font-size: 0.8rem; color: var(--text-muted); }
 
+.stat-change { display: flex; align-items: flex-start; gap: 4px; font-size: 0.8rem; font-weight: 550; color: var(--text-muted); }
+.stat-change svg { flex-shrink: 0; margin-top: 3px; } /* arrow stays on the first line when text wraps */
+.stat-change.is-up { color: var(--positive); }
+.stat-change.is-down { color: var(--negative); }
+
 .not-found { display: grid; gap: 12px; justify-items: start; padding-block: 48px; }
+.page-skeleton { display: grid; gap: 24px; }
+
+/* Range picker row */
+.toolbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; }
+
+/* A row of joined buttons where one is selected (ranges, chart measures). */
+.segmented {
+  display: inline-flex; flex-wrap: wrap; gap: 2px; padding: 3px;
+  background: var(--surface-2); border: 1px solid var(--border); border-radius: 10px;
+}
+.segmented button {
+  padding: 5px 12px; border: 0; border-radius: 7px;
+  background: transparent; color: var(--text-muted);
+  font: inherit; font-size: 0.85rem; font-weight: 550; cursor: pointer;
+}
+.segmented button:hover { color: var(--text); }
+.segmented button[aria-pressed="true"] { background: var(--surface); color: var(--text); box-shadow: var(--shadow); }
+
+.button-small { padding: 5px 10px; font-size: 0.82rem; }
+.button:disabled { opacity: 0.5; cursor: not-allowed; }
+.link-button {
+  justify-self: start; padding: 0; border: 0; background: none;
+  color: var(--accent); font: inherit; font-size: 0.85rem; font-weight: 550; cursor: pointer;
+}
+.link-button:hover { text-decoration: underline; }
+
+/* (i) explanations */
+.info-tip { position: relative; display: inline-flex; vertical-align: middle; }
+.info-tip-button {
+  display: inline-grid; place-items: center; padding: 2px; margin-left: 2px;
+  border: 0; border-radius: 50%; background: none; color: var(--text-muted); cursor: help;
+}
+.info-tip-button:hover { color: var(--text); }
+/* Hidden tooltips use display: none, so they take up no space and can never
+   make the page wider than a phone screen. --shift (set in InfoTip.jsx)
+   slides an open tooltip sideways if it would hang off the screen edge. */
+.info-tip-text {
+  display: none;
+  position: absolute; bottom: calc(100% + 6px); left: 50%; z-index: 20;
+  translate: calc(-50% + var(--shift, 0px)) 0;
+  width: max-content; max-width: min(240px, calc(100vw - 16px)); padding: 8px 10px;
+  background: var(--text); color: var(--bg); border-radius: 8px;
+  font-size: 0.8rem; font-weight: 450; line-height: 1.4; text-transform: none; letter-spacing: 0;
+  pointer-events: none;
+}
+.info-tip:hover .info-tip-text,
+.info-tip-button:focus-visible + .info-tip-text,
+.info-tip-button:focus + .info-tip-text { display: block; }
+
+/* History card */
+.history { display: grid; gap: 12px; }
+.history-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; }
+.history-note { margin-top: -4px; }
+.history-body { transition: opacity 0.15s; min-width: 0; }
+.history-body.is-updating { opacity: 0.5; } /* keep the old chart, faded, while a new range loads */
+.history-empty { display: grid; place-content: center; justify-items: center; gap: 6px; text-align: center; color: var(--text-muted); }
+.history-empty p:first-of-type { color: var(--text); font-weight: 550; }
+.history-foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; }
+.history-actions { display: flex; gap: 8px; margin-left: auto; }
+.marker-key { display: inline-flex; align-items: center; gap: 8px; }
+.marker-swatch { width: 2px; height: 14px; background: var(--marker); border-radius: 1px; }
+
+/* The chart itself. The line and fill use currentColor, so the data colour is set here once. */
+.history-chart { color: var(--series-1); }
+.history-chart .recharts-cartesian-grid line { stroke: var(--grid); }
+.history-chart .recharts-cartesian-axis-tick-value { fill: var(--text-muted); font-size: 12px; }
+.history-chart .recharts-tooltip-cursor { stroke: var(--text-muted); }
+.history-chart .recharts-active-dot circle { stroke: var(--surface); }
+.history-chart .event-line line { stroke: var(--marker); stroke-width: 1px; }
+.history-chart .event-line.is-highlighted line { stroke: var(--accent); stroke-width: 2px; }
+.history-chart .recharts-surface:focus { outline: none; }
+
+.chart-tooltip {
+  display: grid; gap: 2px; min-width: 150px; padding: 10px 12px;
+  background: var(--surface); color: var(--text);
+  border: 1px solid var(--border); border-radius: 10px;
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.15);
+  font-size: 0.82rem;
+}
+.chart-tooltip-value { display: flex; align-items: center; gap: 8px; font-size: 1rem; font-weight: 700; }
+.line-key { width: 12px; height: 2px; border-radius: 1px; background: var(--series-1); }
+.chart-tooltip-extra, .chart-tooltip-time { color: var(--text-muted); }
+.chart-tooltip-event { margin-top: 4px; padding-top: 4px; border-top: 1px solid var(--border); font-weight: 550; }
+
+/* Table view */
+.history-table-wrap { overflow: auto; border: 1px solid var(--border); border-radius: 8px; }
+.data-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+.data-table th, .data-table td { padding: 8px 12px; text-align: left; border-bottom: 1px solid var(--border); white-space: nowrap; }
+.data-table th { position: sticky; top: 0; background: var(--surface-2); font-weight: 600; color: var(--text-muted); }
+.data-table .num { text-align: right; }
+.data-table tbody tr:last-child td { border-bottom: 0; }
+
+/* Updates and About, side by side on wide screens */
+.game-columns { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 380px), 1fr)); align-items: start; }
+.timeline, .about { display: grid; gap: 10px; }
+.timeline-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+.timeline-item {
+  display: flex; align-items: flex-start; gap: 10px; width: 100%;
+  padding: 8px; margin-inline: -8px; border: 0; border-radius: 8px;
+  background: none; color: inherit; font: inherit; text-align: left; cursor: pointer;
+}
+.timeline-item:hover { background: var(--surface-2); }
+.timeline-item.is-highlighted { background: var(--accent-soft); }
+.timeline-icon { display: grid; place-items: center; width: 28px; height: 28px; flex-shrink: 0; border-radius: 8px; background: var(--surface-2); color: var(--text-muted); }
+.timeline-text { display: grid; min-width: 0; overflow-wrap: anywhere; }
+
+.about-description { white-space: pre-line; overflow-wrap: anywhere; color: var(--text); font-size: 0.92rem; }
+.about-description.is-folded { display: -webkit-box; -webkit-line-clamp: 5; -webkit-box-orient: vertical; overflow: hidden; }
+.facts { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px 16px; margin: 6px 0 0; }
+.facts dt { font-size: 0.8rem; color: var(--text-muted); }
+.facts dd { margin: 0; font-weight: 550; }
 
 /* =============================================================================
    Footer

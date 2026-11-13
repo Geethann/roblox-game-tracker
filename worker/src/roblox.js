@@ -57,6 +57,10 @@ export async function fetchGameStats(universeIds) {
     rootPlaceId: game.rootPlaceId,
     name: game.name,
     creatorName: game.creator?.name ?? null,
+    description: game.description ?? "",
+    // Roblox's newest, most specific genre first (e.g. "Battlegrounds & Fighting").
+    genre: [game.genre_l2, game.genre_l1, game.genre].find((g) => g && g !== "All") ?? null,
+    maxPlayers: game.maxPlayers ?? null,
     createdAt: toUnix(game.created),
     lastUpdated: toUnix(game.updated),
     playing: game.playing,
@@ -97,7 +101,7 @@ export async function searchGames(query) {
       universeId: item.universeId,
       rootPlaceId: item.rootPlaceId,
       name: item.name,
-      creatorName: item.creatorName ?? null,
+      creatorName: item.creatorName || null, // Roblox sometimes sends "" instead of a name
       playing: item.playerCount ?? null,
       likes: item.totalUpVotes ?? null,
       dislikes: item.totalDownVotes ?? null,

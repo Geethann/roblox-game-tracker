@@ -121,8 +121,9 @@ export default function SearchBox() {
                 <span className="search-option-text">
                   <span className="search-option-name">{game.name}</span>
                   <span className="search-option-meta">
-                    {game.creatorName}
-                    {game.playing != null && <> · {formatCompact(game.playing)} playing</>}
+                    {/* Only the parts we have, with " · " between them. */}
+                    {[game.creatorName, game.playing != null && `${formatCompact(game.playing)} playing`]
+                      .filter(Boolean).join(" · ")}
                   </span>
                 </span>
                 {game.trackedSince && <span className="badge">Tracked</span>}

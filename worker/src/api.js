@@ -36,8 +36,10 @@ export async function handleApi(request, env, ctx) {
     console.error(err); // full details go to our logs, not to visitors
     return error(500, "Something went wrong on our side. Please try again in a minute.");
   }
-  // Save successful answers for next time, without making this visitor wait.
-  if (response.ok) ctx.waitUntil(cache.put(request, response.clone()));
+  // Save successful answers for next time, without making this visitor wait
+  // (unless the answer says it mustn't be kept).
+  const keepable = !response.headers.get("Cache-Control")?.includes("no-store");
+  if (response.ok && keepable) ctx.waitUntil(cache.put(request, response.clone()));
   return response;
 }
 
@@ -182,7 +184,10 @@ async function history(universeId, range, env) {
        WHERE universe_id = ?1 AND at >= ?2 ORDER BY at`,
     ).bind(universeId, start),
   ]);
-  return json({ universeId, range, resolution, points: points.results, events: events.results }, 300);
+  // An empty history usually means tracking only just started and the first
+  // reading is about to appear, so don't let anyone keep that answer.
+  const maxAge = points.results.length > 0 ? 300 : 0;
+  return json({ universeId, range, resolution, points: points.results, events: events.results }, maxAge);
 }
 
 /** When a range starts, in unix seconds, or null if the range isn't valid. */
@@ -238,11 +243,10 @@ async function status(env) {
 
 // ---- reply helpers ------------------------------------------------------------
 
-/** A JSON reply that browsers and Cloudflare may reuse for `maxAgeSeconds`. */
+/** A JSON reply that browsers and Cloudflare may reuse for `maxAgeSeconds` (0 = never). */
 function json(data, maxAgeSeconds) {
-  return Response.json(data, {
-    headers: { ...CORS, "Cache-Control": `public, max-age=${maxAgeSeconds}` },
-  });
+  const cacheControl = maxAgeSeconds > 0 ? `public, max-age=${maxAgeSeconds}` : "no-store";
+  return Response.json(data, { headers: { ...CORS, "Cache-Control": cacheControl } });
 }
 
 /** An error reply. Never cached, so a temporary problem isn't remembered. */
