@@ -105,7 +105,8 @@ export default function ChartsPage() {
             </select>
             {charts.data && (
               <span className="muted small filter-count" aria-live="polite">
-                {rows.length === games.length ? `${formatNumber(rows.length)} games` : `${formatNumber(rows.length)} of ${formatNumber(games.length)} games`}
+                {/* "All 401 games" when nothing is left out, "328 of 401 games" when something is. */}
+                {rows.length === games.length ? `All ${formatNumber(rows.length)} games` : `${formatNumber(rows.length)} of ${formatNumber(games.length)} games`}
               </span>
             )}
           </div>

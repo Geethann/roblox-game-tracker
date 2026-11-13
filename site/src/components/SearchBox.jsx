@@ -3,6 +3,11 @@
 // Keyboard:  "/" anywhere jumps here · ↑ ↓ move · Enter opens · Esc closes.
 // Empty box: shows the games you opened recently.
 // Built as an accessible "combobox", so screen readers announce the suggestions.
+//
+// Used in two places:
+//   - the header (default): choosing a game opens its page
+//   - the compare page: `onSelect` receives the chosen game instead, and
+//     `exclude` hides games that are already being compared
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 import { Search } from "lucide-react";
@@ -11,7 +16,10 @@ import { formatCompact } from "../lib/format.js";
 import { useDebounced, useRecentGames } from "../lib/hooks.js";
 import GameIcon from "./GameIcon.jsx";
 
-export default function SearchBox() {
+export default function SearchBox({
+  onSelect, exclude = [], placeholder = "Search any Roblox game…", label = "Search Roblox games",
+  shortcut = true, id = "search",
+}) {
   const navigate = useNavigate();
   const inputRef = useRef(null);
   const [text, setText] = useState("");
@@ -24,14 +32,16 @@ export default function SearchBox() {
   const search = useSearch(query);
 
   const typed = text.trim().length >= 2;
-  const items = typed ? (search.data?.results ?? []) : recent;
+  const items = (typed ? (search.data?.results ?? []) : recent)
+    .filter((game) => !exclude.includes(game.universeId));
   const waiting = typed && (query !== text.trim() || search.isFetching);
 
   // New suggestions: highlight the first one again.
   useEffect(() => setActive(0), [query, typed]);
 
-  // Press "/" anywhere on the page to jump to the search box.
+  // Press "/" anywhere on the page to jump to the search box (header only).
   useEffect(() => {
+    if (!shortcut) return undefined;
     function onKeyDown(event) {
       const typingSomewhere = ["INPUT", "TEXTAREA", "SELECT"].includes(document.activeElement?.tagName);
       if (event.key === "/" && !typingSomewhere) {
@@ -41,13 +51,14 @@ export default function SearchBox() {
     }
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, []);
+  }, [shortcut]);
 
   function choose(game) {
     setText("");
     setOpen(false);
     inputRef.current?.blur();
-    navigate(`/game/${game.universeId}`);
+    if (onSelect) onSelect(game);
+    else navigate(`/game/${game.universeId}`);
   }
 
   function onInputKeyDown(event) {
@@ -85,31 +96,31 @@ export default function SearchBox() {
         ref={inputRef}
         type="search"
         className="search-input"
-        placeholder="Search any Roblox game…"
+        placeholder={placeholder}
         value={text}
         onChange={(event) => { setText(event.target.value); setOpen(true); }}
         onFocus={() => setOpen(true)}
         onKeyDown={onInputKeyDown}
         role="combobox"
-        aria-label="Search Roblox games"
+        aria-label={label}
         aria-expanded={open}
-        aria-controls="search-results"
+        aria-controls={`${id}-results`}
         aria-autocomplete="list"
-        aria-activedescendant={open && items[active] ? `search-option-${active}` : undefined}
+        aria-activedescendant={open && items[active] ? `${id}-option-${active}` : undefined}
         autoComplete="off"
         spellCheck="false"
       />
-      <kbd className="search-shortcut" aria-hidden="true">/</kbd>
+      {shortcut && <kbd className="search-shortcut" aria-hidden="true">/</kbd>}
 
       {open && (
         <div className="search-panel">
           {!typed && recent.length > 0 && <div className="search-heading">Recently viewed</div>}
           {message && <div className="search-message">{message}</div>}
-          <ul id="search-results" role="listbox" aria-label="Games" className={waiting ? "is-updating" : ""}>
+          <ul id={`${id}-results`} role="listbox" aria-label="Games" className={waiting ? "is-updating" : ""}>
             {items.map((game, i) => (
               <li
                 key={game.universeId}
-                id={`search-option-${i}`}
+                id={`${id}-option-${i}`}
                 role="option"
                 aria-selected={i === active}
                 className="search-option"

@@ -1,6 +1,6 @@
 // The bar across the top of every page: logo, Charts link, search, light/dark switch.
 import { Link, NavLink } from "react-router";
-import { Activity, ChartColumn } from "lucide-react";
+import { Activity, ChartColumn, GitCompareArrows } from "lucide-react";
 import SearchBox from "./SearchBox.jsx";
 import ThemeToggle from "./ThemeToggle.jsx";
 
@@ -16,6 +16,10 @@ export default function Header() {
         <NavLink to="/charts" className="nav-link" aria-label="Charts">
           <ChartColumn size={18} aria-hidden="true" />
           <span className="nav-link-text">Charts</span>
+        </NavLink>
+        <NavLink to="/compare" className="nav-link" aria-label="Compare">
+          <GitCompareArrows size={18} aria-hidden="true" />
+          <span className="nav-link-text">Compare</span>
         </NavLink>
         <SearchBox />
         <ThemeToggle />

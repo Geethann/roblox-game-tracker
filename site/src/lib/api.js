@@ -1,6 +1,6 @@
 // Everything that talks to our backend API lives here. Each "use..." function
 // is a React hook: a component calls it and gets { data, isPending, error }.
-import { keepPreviousData, useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useQueries, useQuery } from "@tanstack/react-query";
 
 const API_URL = import.meta.env.VITE_API_URL
   ?? "https://roblox-game-tracker.roblox-game-tracker-worker.workers.dev";
@@ -39,24 +39,45 @@ export function useSearch(query) {
   });
 }
 
+// The settings for one game's details / history. Shared by the single-game
+// hooks and the many-games hooks, so they share the same saved copies:
+// opening a comparison doesn't re-download a game you just looked at.
+const gameQuery = (universeId) => ({
+  queryKey: ["game", String(universeId)],
+  queryFn: () => getJson(`/api/games/${universeId}`),
+  enabled: Boolean(universeId),
+  refetchInterval: 60_000,
+});
+
+const historyQuery = (universeId, range) => ({
+  queryKey: ["history", String(universeId), range],
+  queryFn: () => getJson(`/api/games/${universeId}/history?range=${range}`),
+  enabled: Boolean(universeId),
+  staleTime: 5 * 60_000,
+  refetchInterval: 10 * 60_000,
+});
+
 /** One game's details and live numbers, refreshed every minute. */
 export function useGame(universeId) {
-  return useQuery({
-    queryKey: ["game", universeId],
-    queryFn: () => getJson(`/api/games/${universeId}`),
-    enabled: Boolean(universeId),
-    refetchInterval: 60_000,
+  return useQuery(gameQuery(universeId));
+}
+
+/** Several games' details at once (one request each, sent together). */
+export function useGames(universeIds) {
+  return useQueries({ queries: universeIds.map(gameQuery) });
+}
+
+/** Several games' chart data for the same range. */
+export function useHistories(universeIds, range) {
+  return useQueries({
+    queries: universeIds.map((id) => ({ ...historyQuery(id, range), placeholderData: keepPreviousData })),
   });
 }
 
 /** A game's chart data for one range (24h, 7d ... all). New readings arrive hourly. */
 export function useHistory(universeId, range) {
   return useQuery({
-    queryKey: ["history", universeId, range],
-    queryFn: () => getJson(`/api/games/${universeId}/history?range=${range}`),
-    enabled: Boolean(universeId),
-    staleTime: 5 * 60_000,
-    refetchInterval: 10 * 60_000,
+    ...historyQuery(universeId, range),
     placeholderData: keepPreviousData, // keep the old chart (faded) while a new range loads
   });
 }

@@ -1,11 +1,15 @@
 // Home: the visitor's main game (if they've picked one) and the four charts.
+import { lazy, Suspense } from "react";
 import { Link } from "react-router";
-import { ArrowRight, Clock, Flame, Sparkles, ThumbsUp, TrendingUp, Users, X } from "lucide-react";
-import { useGame, useLeaderboards } from "../lib/api.js";
-import { formatCompact, formatPercent, timeAgo } from "../lib/format.js";
+import { ArrowRight, Clock, Flame, GitCompareArrows, Sparkles, ThumbsUp, TrendingUp, Users, X } from "lucide-react";
+import { useGame, useHistory, useLeaderboards } from "../lib/api.js";
+import { formatCompact, formatNumber, formatPercent, timeAgo } from "../lib/format.js";
 import { useMainGame, useNow } from "../lib/hooks.js";
 import GameIcon from "../components/GameIcon.jsx";
 import { ErrorState, Skeleton } from "../components/Feedback.jsx";
+
+// The trend line uses the chart library; load it only when a main game is shown.
+const Sparkline = lazy(() => import("../components/Sparkline.jsx"));
 
 // Each list: where its data is, which charts page "View all" opens,
 // how to show its number, and what to say when it's empty.
@@ -122,34 +126,67 @@ function Leaderboard({ list, games, loading, now }) {
   );
 }
 
-/** The visitor's main game, with its live numbers. */
+/**
+ * The visitor's main game: live numbers, its rank, 24h change, a 7-day trend
+ * line, and shortcuts to its page and to the compare page.
+ */
 function MainGameCard({ universeId }) {
   const game = useGame(universeId);
+  const week = useHistory(universeId, "7d");
   const [, setMainGame] = useMainGame();
+  const g = game.data;
+  const trend = week.data?.universeId === Number(universeId)
+    ? week.data.points.map((p) => p.playing).filter((v) => v != null)
+    : [];
+  const change = g?.change24h;
 
   return (
     <section className="card main-game-card">
-      <div className="main-game-label">Your main game</div>
+      <div className="main-game-top">
+        <span className="main-game-label">Your main game</span>
+        <button type="button" className="icon-button icon-button-small" onClick={() => setMainGame(null)}
+                aria-label="Remove main game" title="Remove main game">
+          <X size={16} />
+        </button>
+      </div>
       {game.isPending ? (
-        <Skeleton height={56} />
+        <Skeleton height={64} />
       ) : game.isError ? (
         <p className="muted">Couldn&apos;t load your main game: {game.error.message}</p>
       ) : (
         <div className="main-game-body">
           <Link to={`/game/${universeId}`} className="main-game-link">
-            <GameIcon src={game.data.icon} size={56} />
+            <GameIcon src={g.icon} size={56} />
             <span>
-              <span className="main-game-name">{game.data.name}</span>
+              <span className="main-game-name">{g.name}</span>
               <span className="muted small">
-                <span className="live-dot" aria-hidden="true" />
-                {formatCompact(game.data.playing)} playing · {formatCompact(game.data.visits)} visits
+                {g.rank ? `#${formatNumber(g.rank.position)} most played of ${formatNumber(g.rank.of)}` : "Not ranked yet"}
               </span>
             </span>
           </Link>
-          <button type="button" className="icon-button" onClick={() => setMainGame(null)}
-                  aria-label="Remove main game" title="Remove main game">
-            <X size={18} />
-          </button>
+          <div className="main-game-stats">
+            <div>
+              <div className="main-game-stat-label"><span className="live-dot" aria-hidden="true" />Playing now</div>
+              <div className="main-game-stat">{formatNumber(g.playing)}</div>
+            </div>
+            <div>
+              <div className="main-game-stat-label">vs yesterday</div>
+              <div className={`main-game-stat${change > 0 ? " is-up" : change < 0 ? " is-down" : ""}`}>
+                {change == null ? "—" : formatPercent(change, { signed: true })}
+              </div>
+            </div>
+            {trend.length >= 2 && (
+              <Suspense fallback={null}>
+                <div className="main-game-trend">
+                  <div className="main-game-stat-label">Last 7 days</div>
+                  <Sparkline values={trend} label={`Players over the last 7 days, now ${formatNumber(g.playing)}`} />
+                </div>
+              </Suspense>
+            )}
+          </div>
+          <Link to={`/compare?main=${universeId}`} className="button">
+            <GitCompareArrows size={16} aria-hidden="true" /> Compare
+          </Link>
         </div>
       )}
     </section>
