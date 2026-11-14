@@ -372,6 +372,11 @@ a  { color: inherit; text-decoration: none; }
 .event-marker:focus-visible .event-flag { stroke: var(--text); stroke-width: 2px; }
 .event-label { position: absolute; z-index: 5; pointer-events: none; white-space: nowrap; margin-top: -4px; }
 .chart-tooltip-event-title { font-weight: 600; }
+.event-label-list { list-style: none; margin: 4px 0 0; padding: 4px 0 0; border-top: 1px solid var(--border); display: grid; gap: 2px; font-size: 0.85rem; }
+/* The number in a flag that covers several updates. */
+.event-marker .event-count { font-size: 9px; font-weight: 700; fill: var(--text-muted); pointer-events: none; }
+.event-line.is-highlighted .event-count,
+.event-marker:hover .event-count, .event-marker:focus-visible .event-count { fill: var(--surface); }
 .history-chart .recharts-surface:focus { outline: none; }
 
 .chart-tooltip {
@@ -406,6 +411,8 @@ a  { color: inherit; text-decoration: none; }
 }
 .timeline-item:hover { background: var(--surface-2); }
 .timeline-item.is-highlighted { background: var(--accent-soft); }
+.timeline-item.is-off-chart { cursor: default; }
+.timeline-item.is-off-chart:hover { background: none; }
 .timeline-icon { display: grid; place-items: center; width: 28px; height: 28px; flex-shrink: 0; border-radius: 8px; background: var(--surface-2); color: var(--text-muted); }
 .timeline-text { display: grid; min-width: 0; overflow-wrap: anywhere; }
 

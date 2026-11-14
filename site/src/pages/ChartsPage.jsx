@@ -12,6 +12,7 @@ import {
 } from "../lib/charts.js";
 import { formatCompact, formatNumber, formatPercent, timeAgo } from "../lib/format.js";
 import { useNow } from "../lib/hooks.js";
+import { previewState } from "../lib/preview.js";
 import GameIcon from "../components/GameIcon.jsx";
 import { ErrorState, Skeleton } from "../components/Feedback.jsx";
 
@@ -180,7 +181,7 @@ function GameRow({ game, rank, now }) {
     <tr>
       <td className="num muted">{rank}</td>
       <td className="col-name">
-        <Link to={`/game/${game.universeId}`} className="table-game">
+        <Link to={`/game/${game.universeId}`} state={previewState(game)} className="table-game">
           <GameIcon src={game.icon} size={32} />
           <span className="table-game-text">
             <span className="table-game-name">{game.name}</span>

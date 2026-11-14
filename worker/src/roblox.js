@@ -8,49 +8,75 @@ const VOTES_PER_REQUEST = 100;
 const ICONS_PER_REQUEST = 100;
 
 /**
- * Download a URL and return the JSON reply.
- * Retries "too many requests" (429) and Roblox server errors (5xx), waiting
- * a little longer each time. Other errors (like 404) won't fix themselves,
- * so those fail straight away.
+ * How hard to try when Roblox doesn't answer properly. Roblox sometimes refuses
+ * requests ("429 Too Many Requests"), especially from Cloudflare, whose internet
+ * addresses are shared with many other sites. A second try usually works.
+ *   BACKGROUND - the hourly jobs: nobody is waiting, so up to 3 tries, 2s then 4s apart
+ *   VISITOR    - someone is waiting for a page: 2 quick tries 0.3s apart, each given
+ *                at most 2.5s, so a page never hangs for long
+ *   OPTIONAL   - extras like icons: one try, at most 1.5s (the saved one is used instead)
  */
-export async function getJson(url, attempts = 3) {
+export const BACKGROUND = { attempts: 3, retryDelayMs: 2000, timeoutMs: 15_000 };
+export const VISITOR = { attempts: 2, retryDelayMs: 300, timeoutMs: 2_500 };
+export const OPTIONAL = { attempts: 1, retryDelayMs: 0, timeoutMs: 1_500 };
+
+/**
+ * Download a URL and return the JSON reply, following one of the policies above.
+ * Retries "too many requests" (429), Roblox server errors (5xx), network trouble
+ * and timeouts. Other errors (like 404) won't fix themselves, so those fail at once.
+ * `trace` (optional) collects how long each request took, for the Server-Timing header.
+ */
+export async function getJson(url, { attempts, retryDelayMs, timeoutMs } = BACKGROUND, trace = null, label = "roblox") {
+  const started = Date.now();
   let problem;
-  for (let attempt = 1; attempt <= attempts; attempt++) {
-    let response;
-    try {
-      response = await fetch(url, { headers: HEADERS });
-    } catch (error) {
-      problem = error.message; // network trouble: worth a retry
-    }
-    if (response) {
-      if (response.ok) return response.json();
-      if (response.status !== 429 && response.status < 500) {
-        throw new Error(`HTTP ${response.status} from ${url}`);
+  let tries = 0;
+  try {
+    for (let attempt = 1; attempt <= attempts; attempt++) {
+      tries = attempt;
+      let response;
+      try {
+        response = await fetch(url, { headers: HEADERS, signal: AbortSignal.timeout(timeoutMs) });
+      } catch (error) {
+        problem = error.name === "TimeoutError" ? `no answer within ${timeoutMs}ms` : error.message;
       }
-      problem = `HTTP ${response.status}`;
+      if (response) {
+        if (response.ok) return await response.json();
+        if (response.status !== 429 && response.status < 500) {
+          throw new Error(`HTTP ${response.status} from ${url}`);
+        }
+        problem = `HTTP ${response.status}`;
+      }
+      if (attempt < attempts) await sleep(retryDelayMs * attempt);
     }
-    if (attempt < attempts) await sleep(2000 * attempt);
+    throw new Error(`Gave up on ${url} after ${attempts} attempts (${problem})`);
+  } finally {
+    if (trace) trace.push({ label, ms: Date.now() - started, tries, problem });
   }
-  throw new Error(`Gave up on ${url} after ${attempts} attempts (${problem})`);
 }
 
 /**
  * Current stats for any number of games, using as few requests as possible.
  * Returns one object per game that Roblox still knows about.
+ *   policy         how hard to try (see above)
+ *   optionalVotes  if the likes/dislikes request fails, still return the rest,
+ *                  with `votesUnavailable: true` (used for visitors' pages)
  */
-export async function fetchGameStats(universeIds) {
+export async function fetchGameStats(universeIds, { policy = BACKGROUND, optionalVotes = false, trace = null } = {}) {
   const detailRequests = chunk(universeIds, DETAILS_PER_REQUEST).map((ids) =>
-    getJson(`https://games.roblox.com/v1/games?universeIds=${ids.join(",")}`));
+    getJson(`https://games.roblox.com/v1/games?universeIds=${ids.join(",")}`, policy, trace, "details"));
   const voteRequests = chunk(universeIds, VOTES_PER_REQUEST).map((ids) =>
-    getJson(`https://games.roblox.com/v1/games/votes?universeIds=${ids.join(",")}`));
+    getJson(`https://games.roblox.com/v1/games/votes?universeIds=${ids.join(",")}`, policy, trace, "votes"));
 
   // Send every request at the same time and wait for all the replies.
   const [details, votes] = await Promise.all([
     Promise.all(detailRequests),
-    Promise.all(voteRequests),
+    Promise.all(voteRequests).catch((error) => {
+      if (!optionalVotes) throw error;
+      return null; // carry on without likes/dislikes
+    }),
   ]);
 
-  const votesById = new Map(votes.flatMap((reply) => reply.data).map((v) => [v.id, v]));
+  const votesById = new Map((votes ?? []).flatMap((reply) => reply.data).map((v) => [v.id, v]));
   const asked = new Set(universeIds.map(Number));
 
   return details.flatMap((reply) => reply.data)
@@ -73,6 +99,7 @@ export async function fetchGameStats(universeIds) {
       favorites: game.favoritedCount,
       likes: votesById.get(game.id)?.upVotes ?? null,
       dislikes: votesById.get(game.id)?.downVotes ?? null,
+      ...(votes === null && { votesUnavailable: true }),
     }));
 }
 
@@ -102,10 +129,10 @@ export async function fetchFrontPageLists() {
  * Adverts (sponsored results) are left out. Like the front-page lists, this
  * endpoint isn't officially documented, so callers should handle failures.
  */
-export async function searchGames(query) {
+export async function searchGames(query, { policy = BACKGROUND, trace = null } = {}) {
   const reply = await getJson(
     "https://apis.roblox.com/search-api/omni-search?pageType=all"
-    + `&searchQuery=${encodeURIComponent(query)}&sessionId=${crypto.randomUUID()}`);
+    + `&searchQuery=${encodeURIComponent(query)}&sessionId=${crypto.randomUUID()}`, policy, trace, "search");
   return (reply.searchResults ?? [])
     .flatMap((group) => group.contents ?? [])
     .filter((item) => item.contentType === "Game" && !item.isSponsored)
@@ -125,10 +152,10 @@ export async function searchGames(query) {
  * The images themselves load straight from Roblox's image servers;
  * only this lookup has to go through our backend.
  */
-export async function fetchIcons(universeIds) {
+export async function fetchIcons(universeIds, { policy = BACKGROUND, trace = null } = {}) {
   const replies = await Promise.all(chunk(universeIds, ICONS_PER_REQUEST).map((ids) =>
     getJson("https://thumbnails.roblox.com/v1/games/icons?size=150x150&format=Webp"
-      + `&isCircular=false&returnPolicy=PlaceHolder&universeIds=${ids.join(",")}`)));
+      + `&isCircular=false&returnPolicy=PlaceHolder&universeIds=${ids.join(",")}`, policy, trace, "icons")));
   return new Map(replies
     .flatMap((reply) => reply.data)
     .filter((icon) => icon.state === "Completed")

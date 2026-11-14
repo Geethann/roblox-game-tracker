@@ -4,16 +4,17 @@
 // (e.g. /game/123?range=30d&metric=visits), so a copied link opens exactly
 // the same view for whoever you send it to.
 import { useEffect, useMemo, useState } from "react";
-import { Link, useParams, useSearchParams } from "react-router";
+import { Link, useLocation, useParams, useSearchParams } from "react-router";
 import { ArrowDown, ArrowRight, ArrowUp, ExternalLink, GitCompareArrows, Star } from "lucide-react";
 import { useGame, useHistory } from "../lib/api.js";
 import {
   formatCompact, formatDate, formatNumber, formatPercent, likeRatio, timeAgo,
 } from "../lib/format.js";
 import {
-  DEFAULT_RANGE, RANGES, isMetric, isRange, preparePoints, rangeStart, summarise,
+  DEFAULT_RANGE, RANGES, eventMarkers, isMetric, isRange, preparePoints, rangeStart, summarise,
 } from "../lib/history.js";
 import { useMainGame, useNow, useRecentGames } from "../lib/hooks.js";
+import { readPreview } from "../lib/preview.js";
 import { playersVsMain, ratingVsMain } from "../lib/compare.js";
 import GameIcon from "../components/GameIcon.jsx";
 import InfoTip from "../components/InfoTip.jsx";
@@ -23,6 +24,8 @@ import EventTimeline from "../components/EventTimeline.jsx";
 import AboutGame from "../components/AboutGame.jsx";
 import { ErrorState, Notice, Skeleton } from "../components/Feedback.jsx";
 import NotFoundPage from "./NotFoundPage.jsx";
+
+const NO_EVENTS = []; // one shared empty list, so it doesn't count as "changed" on every render
 
 // Why a game isn't being tracked (the backend's safeguards), in plain words.
 const NOT_TRACKED = {
@@ -39,6 +42,7 @@ const RANGE_PHRASES = {
 export default function GamePage() {
   const { universeId } = useParams();
   const isValidId = /^\d{1,15}$/.test(universeId);
+  const preview = readPreview(useLocation(), universeId); // name + icon from the list you came from
   const now = useNow();
 
   // Range and measure come from the address bar (?range=30d&metric=visits).
@@ -66,7 +70,15 @@ export default function GamePage() {
     () => (historyIsCurrent ? preparePoints(history.data.points, resolution, now / 1000) : []),
     [historyIsCurrent, history.data, resolution, now],
   );
-  const events = historyIsCurrent ? history.data.events : [];
+  const events = historyIsCurrent ? history.data.events : NO_EVENTS;
+  // Which updates have a marker on the chart (the list below says why the others don't).
+  const chartSpan = useMemo(() => {
+    if (points.length < 2) return null;
+    const first = points[0].t;
+    const last = points[points.length - 1].t;
+    const onChart = new Set(eventMarkers(events, first, last, resolution).flatMap((m) => m.events.map((e) => e.t)));
+    return { has: (t) => onChart.has(t), last: resolution === "day" ? last + 86_400 - 1 : last };
+  }, [points, events, resolution]);
   const summary = useMemo(() => summarise(points), [points]);
 
   // Opening a game we weren't tracking starts tracking it and saves its first
@@ -94,7 +106,7 @@ export default function GamePage() {
     return <NotFoundPage message="We couldn't find a Roblox game with that ID." />;
   }
   if (game.isError) return <ErrorState error={game.error} onRetry={game.refetch} />;
-  if (game.isPending) return <GamePageSkeleton />;
+  if (game.isPending) return <GamePageSkeleton preview={preview} />;
 
   const g = game.data;
 
@@ -195,7 +207,8 @@ export default function GamePage() {
       )}
 
       <div className="game-columns">
-        <EventTimeline events={events} highlighted={highlightedEvent} onHighlight={setHighlightedEvent} now={now} />
+        <EventTimeline events={events} highlighted={highlightedEvent} onHighlight={setHighlightedEvent}
+                       now={now} chartSpan={chartSpan} />
         <AboutGame game={g} />
       </div>
     </>
@@ -308,14 +321,16 @@ function MainGameButton({ game }) {
   );
 }
 
-function GamePageSkeleton() {
+/** While a game loads: its name and icon if we already know them, grey placeholders for the rest. */
+function GamePageSkeleton({ preview }) {
   return (
     <div className="page-skeleton" aria-busy="true" aria-label="Loading game">
+      {preview && <title>{`${preview.name} · Roblox Game Tracker`}</title>}
       <div className="game-header">
-        <Skeleton width={88} height={88} radius={16} />
+        {preview ? <GameIcon src={preview.icon} size={88} /> : <Skeleton width={88} height={88} radius={16} />}
         <div className="game-title">
-          <Skeleton width="60%" height={28} />
-          <Skeleton width="30%" />
+          {preview ? <h1>{preview.name}</h1> : <Skeleton width="60%" height={28} />}
+          {preview?.creatorName ? <p className="muted">by {preview.creatorName}</p> : <Skeleton width="30%" />}
         </div>
       </div>
       <Skeleton width={360} height={36} radius={10} />

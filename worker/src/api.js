@@ -7,7 +7,7 @@
 //   GET /api/charts                    every tracked game, for the full chart tables
 //   GET /api/status                    is the tracker healthy?
 
-import { fetchGameStats, fetchIcons, searchGames } from "./roblox.js";
+import { OPTIONAL, VISITOR, fetchGameStats, fetchIcons, searchGames } from "./roblox.js";
 import { nowSeconds } from "./db.js";
 
 const DAY = 86400;
@@ -90,8 +90,9 @@ async function search(rawQuery, env) {
 
   let results;
   let source = "roblox";
+  const trace = [];
   try {
-    results = (await searchGames(query)).slice(0, 20);
+    results = (await searchGames(query, { policy: { ...VISITOR, timeoutMs: 4_000 }, trace })).slice(0, 20);
   } catch (err) {
     // Roblox's search isn't officially supported, so if it fails, fall back
     // to searching the games we already track (no live numbers, but useful).
@@ -106,10 +107,10 @@ async function search(rawQuery, env) {
 
   const ids = results.map((game) => game.universeId);
   const [icons, trackedSince] = await Promise.all([
-    fetchIcons(ids).catch(() => new Map()), // icons are nice-to-have
+    fetchIcons(ids, { policy: OPTIONAL, trace }).catch(() => new Map()), // icons are nice-to-have
     trackedSinceFor(env, ids),
   ]);
-  return json({
+  return withTiming(json({
     query,
     source,
     results: results.map((game) => ({
@@ -117,7 +118,7 @@ async function search(rawQuery, env) {
       icon: icons.get(game.universeId) ?? null,
       trackedSince: trackedSince.get(game.universeId) ?? null,
     })),
-  }, 300);
+  }, 300), trace);
 }
 
 /** For a list of games, when we started tracking each one (if we have). */
@@ -133,10 +134,12 @@ async function trackedSinceFor(env, ids) {
 // ---- GET /api/games/:id ------------------------------------------------------
 
 async function game(universeId, env, visitor) {
+  const trace = []; // how long each Roblox request took (sent in the Server-Timing header)
   const [live, icons, ranks] = await Promise.all([
-    // null = Roblox didn't answer (e.g. it's refusing requests for a moment)
-    fetchGameStats([universeId]).catch((err) => { console.error("Roblox game lookup failed:", err.message); return null; }),
-    fetchIcons([universeId]).catch(() => new Map()),
+    // null = Roblox didn't answer properly, even after a quick second try
+    fetchGameStats([universeId], { policy: VISITOR, optionalVotes: true, trace })
+      .catch((err) => { console.error("Roblox game lookup failed:", err.message); return null; }),
+    fetchIcons([universeId], { policy: OPTIONAL, trace }).catch(() => new Map()), // nice-to-have
     env.DB.prepare("SELECT value FROM meta WHERE key = 'game_ranks'").first("value"),
   ]);
 
@@ -145,26 +148,50 @@ async function game(universeId, env, visitor) {
   const [rank, change24h] = saved?.ranks[universeId] ?? [null, null];
   const extras = { rank: rank && { position: rank, of: saved.total }, change24h };
 
-  if (live === null) {
-    // Roblox is unavailable. For a game we track, show its latest hourly reading
-    // instead of an error, marked as not live ("stale") with the time it was taken.
-    // Never cached, so the next visit tries Roblox again.
-    const last = await lastReading(env, universeId);
-    if (!last) throw new Error("Roblox is unavailable and there's no saved reading for this game");
-    return json({ ...last, icon: icons.get(universeId) ?? last.icon, ...extras, stale: true }, 0);
+  const stats = live?.[0];
+  // Anything we're missing from Roblox (everything, or just the likes or the
+  // icon) comes from our latest hourly reading, if we track this game.
+  const last = !stats || stats.votesUnavailable || !icons.has(universeId)
+    ? await lastReading(env, universeId)
+    : null;
+
+  if (!stats) {
+    // Roblox failed, or sent nothing usable for a game we know exists. Show our
+    // latest reading, marked "stale" with when it was taken, rather than an
+    // error or "no such game". Never cached, so the next visit tries Roblox again.
+    if (last) return withTiming(json({ ...last, icon: icons.get(universeId) ?? last.icon, ...extras, stale: true }, 0), trace);
+    if (live === null) throw new Error("Roblox is unavailable and there's no saved reading for this game");
+    return withTiming(error(404, "There's no Roblox game with that ID"), trace);
   }
 
-  const [stats] = live;
-  if (!stats) return error(404, "There's no Roblox game with that ID");
+  if (stats.votesUnavailable) {
+    stats.likes = last?.likes ?? null;
+    stats.dislikes = last?.dislikes ?? null;
+    delete stats.votesUnavailable;
+  }
   const tracking = await startTracking(env, stats, visitor);
-  return json({
+  return withTiming(json({
     ...stats,
-    icon: icons.get(universeId) ?? null,
+    icon: icons.get(universeId) ?? last?.icon ?? null,
     ...tracking,
     ...extras,
     stale: false,
     fetchedAt: nowSeconds(),
-  }, 60);
+  }, 60), trace);
+}
+
+/**
+ * Adds a Server-Timing header saying how long each Roblox request took and how
+ * many tries it needed, e.g. "details;dur=312;desc=\"1 try\"". Browsers show it
+ * in their developer tools, which makes slow or failing requests easy to spot.
+ */
+function withTiming(response, trace) {
+  if (trace.length) {
+    response.headers.set("Server-Timing", trace.map((t) =>
+      `${t.label};dur=${t.ms};desc="${t.tries} ${t.tries === 1 ? "try" : "tries"}${t.problem ? `, ${t.problem.replace(/"/g, "'")}` : ""}"`,
+    ).join(", "));
+  }
+  return response;
 }
 
 /**
