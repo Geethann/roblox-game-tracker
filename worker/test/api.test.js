@@ -160,6 +160,27 @@ describe("a game's page", () => {
     expect(await rows("SELECT active FROM games WHERE universe_id = 206")).toEqual([{ active: 1 }]);
   });
 
+  it("shows a tracked game's last hourly reading, marked stale, if Roblox is down", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    await addGame(209, { name: "Saved Game", icon: "https://tr.rbxcdn.com/saved" });
+    await addReading(209, 1_790_000_000, { playing: 7 });
+    await addReading(209, 1_790_003_600, { playing: 8 });
+    fakeRoblox({ down: ["games", "thumbnails"] });
+    const response = await request("/api/games/209");
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("Cache-Control")).toBe("no-store"); // try Roblox again next time
+    expect(await response.json()).toMatchObject({
+      universeId: 209, name: "Saved Game", playing: 8, icon: "https://tr.rbxcdn.com/saved",
+      stale: true, fetchedAt: 1_790_003_600, isTracking: true,
+    });
+  });
+
+  it("live answers say they're live", async () => {
+    fakeRoblox({ games: { 210: {} } });
+    expect(await (await request("/api/games/210")).json()).toMatchObject({ stale: false });
+  });
+
   it("gives 404 for an ID Roblox doesn't know", async () => {
     fakeRoblox({ games: {} });
     expect((await request("/api/games/207")).status).toBe(404);

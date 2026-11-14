@@ -324,21 +324,20 @@ a  { color: inherit; text-decoration: none; }
   border: 0; border-radius: 50%; background: none; color: var(--text-muted); cursor: help;
 }
 .info-tip-button:hover { color: var(--text); }
-/* Hidden tooltips use display: none, so they take up no space and can never
-   make the page wider than a phone screen. --shift (set in InfoTip.jsx)
-   slides an open tooltip sideways if it would hang off the screen edge. */
+/* Hidden explanations use display: none, so they take up no space and can never
+   make the page wider than a phone screen. When open, they're pinned to the
+   screen (position: fixed) and placed by InfoTip.jsx, so scrolling tables and
+   cards can't cut them off. */
 .info-tip-text {
   display: none;
-  position: absolute; bottom: calc(100% + 6px); left: 50%; z-index: 20;
-  translate: calc(-50% + var(--shift, 0px)) 0;
+  position: fixed; left: 0; top: 0; z-index: 60;
   width: max-content; max-width: min(240px, calc(100vw - 16px)); padding: 8px 10px;
   background: var(--text); color: var(--bg); border-radius: 8px;
   font-size: 0.8rem; font-weight: 450; line-height: 1.4; text-transform: none; letter-spacing: 0;
+  white-space: normal; text-align: left; /* not inherited from e.g. a table heading */
   pointer-events: none;
 }
-.info-tip:hover .info-tip-text,
-.info-tip-button:focus-visible + .info-tip-text,
-.info-tip-button:focus + .info-tip-text { display: block; }
+.info-tip.is-open .info-tip-text { display: block; }
 
 /* History card */
 .history { display: grid; gap: 12px; }
@@ -359,8 +358,20 @@ a  { color: inherit; text-decoration: none; }
 .history-chart .recharts-cartesian-axis-tick-value { fill: var(--text-muted); font-size: 12px; }
 .history-chart .recharts-tooltip-cursor { stroke: var(--text-muted); }
 .history-chart .recharts-active-dot circle { stroke: var(--surface); }
-.history-chart .event-line line { stroke: var(--marker); stroke-width: 1px; }
-.history-chart .event-line.is-highlighted line { stroke: var(--accent); stroke-width: 2px; }
+/* Update markers: a thin line with a small flag on top, and an invisible wider
+   strip (.event-hit) so the marker is easy to point at. */
+.history-chart { position: relative; }
+.event-marker { cursor: pointer; outline: none; }
+.event-marker line { stroke: var(--marker); stroke-width: 1px; }
+.event-marker .event-hit { fill: transparent; }
+.event-marker .event-flag { fill: var(--surface); stroke: var(--marker); stroke-width: 2px; }
+.event-line.is-highlighted .event-marker line,
+.event-marker:hover line, .event-marker:focus-visible line { stroke: var(--accent); stroke-width: 2px; }
+.event-line.is-highlighted .event-flag,
+.event-marker:hover .event-flag, .event-marker:focus-visible .event-flag { fill: var(--accent); stroke: var(--accent); }
+.event-marker:focus-visible .event-flag { stroke: var(--text); stroke-width: 2px; }
+.event-label { position: absolute; z-index: 5; pointer-events: none; white-space: nowrap; margin-top: -4px; }
+.chart-tooltip-event-title { font-weight: 600; }
 .history-chart .recharts-surface:focus { outline: none; }
 
 .chart-tooltip {

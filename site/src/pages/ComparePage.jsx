@@ -12,7 +12,8 @@ import {
 } from "../lib/compare.js";
 import { formatCompact, formatNumber, formatPercent, likeRatio } from "../lib/format.js";
 import {
-  DEFAULT_RANGE, METRICS, RANGES, downloadFile, formatPointTime, isMetric, isRange, preparePoints, summarise,
+  DEFAULT_RANGE, METRICS, RANGES, downloadFile, formatPointTime, isMetric, isRange, notEnoughHint, preparePoints,
+  summarise,
 } from "../lib/history.js";
 import { useMainGame, useNow } from "../lib/hooks.js";
 import CompareChart from "../components/CompareChart.jsx";
@@ -75,6 +76,9 @@ export default function ComparePage() {
   const rows = allLoaded ? mergeSeries(shown.map((i) => series[i]), metric.value, mode) : [];
   const updating = historyQueries.some((q) => q.isFetching && q.isPlaceholderData);
   const named = shown.map((i) => ({ universeId: ids[i], name: games[i]?.name ?? `Game ${ids[i]}` }));
+  // A line needs at least two values. E.g. "visits gained per day" has none until
+  // a game has two full days of history, so there may be dates but nothing to draw.
+  const chartable = named.some((g) => rows.filter((row) => row[g.universeId] != null).length >= 2);
 
   const add = (game) => update({ with: [...others, game.universeId].join(",") });
   const remove = (id) => {
@@ -150,11 +154,11 @@ export default function ComparePage() {
         <div className={`history-body${updating ? " is-updating" : ""}`}>
           {!allLoaded ? (
             <Skeleton height={360} radius={8} />
-          ) : rows.length < 2 ? (
+          ) : !chartable ? (
             <div className="history-empty" style={{ minHeight: 360 }}>
               <ChartLine size={28} aria-hidden="true" />
               <p>Not enough readings for a chart yet.</p>
-              <p className="muted small">A new reading is added every hour. Try a longer range.</p>
+              <p className="muted small">{notEnoughHint(resolution)}</p>
             </div>
           ) : view === "chart" ? (
             <CompareChart rows={rows} games={named} slots={slots} metric={metric} mode={mode}
@@ -166,7 +170,7 @@ export default function ComparePage() {
 
         <div className="history-foot">
           <span className="history-actions">
-            <button type="button" className="button button-small" disabled={rows.length < 2}
+            <button type="button" className="button button-small" disabled={!chartable}
                     onClick={() => setView(view === "chart" ? "table" : "chart")}>
               {view === "chart" ? <><Table2 size={15} aria-hidden="true" /> Table</> : <><ChartLine size={15} aria-hidden="true" /> Chart</>}
             </button>
@@ -252,11 +256,11 @@ function SideBySide({ ids, games, series, slots, mainId, range }) {
             <tr>
               <th scope="col">Game</th>
               <th scope="col" className="num">Playing now</th>
-              <th scope="col" className="num">vs main</th>
+              <th scope="col" className="num">vs main <InfoTip label="About players vs main" text="Players right now, compared with your main game's. 2.0× means twice as many players as your main game; 0.50× means half as many." /></th>
               <th scope="col" className="num">Peak (hourly) <InfoTip label="About Peak (hourly)" text="Players are checked once an hour, so short spikes between checks can be missed." /></th>
               <th scope="col" className="num">Visits gained</th>
               <th scope="col" className="num">Rating</th>
-              <th scope="col" className="num">vs main</th>
+              <th scope="col" className="num">vs main <InfoTip label="About rating vs main" text="How much higher or lower the rating is than your main game's, in percentage points: 91% vs 88% is +3 pts." /></th>
             </tr>
           </thead>
           <tbody>

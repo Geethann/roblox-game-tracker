@@ -140,6 +140,12 @@ export default function GamePage() {
       <VsMainStrip game={g} />
 
       {!g.isTracking && <Notice>{NOT_TRACKED[g.notTrackedReason] ?? NOT_TRACKED.full}</Notice>}
+      {g.stale && (
+        <Notice>
+          Roblox isn&apos;t answering right now, so these are the numbers from the last hourly
+          check ({timeAgo(g.fetchedAt, now)}). Live numbers come back automatically.
+        </Notice>
+      )}
 
       {/* The range picker sits above everything it changes: the cards and the chart. */}
       <div className="toolbar">
@@ -155,7 +161,7 @@ export default function GamePage() {
       </div>
 
       <div className="stat-grid">
-        <StatCard label="Playing now" live value={formatNumber(g.playing)}
+        <StatCard label="Playing now" live={!g.stale} value={formatNumber(g.playing)}
                   footnote={`Updated ${timeAgo(g.fetchedAt, now)}`} />
         <StatCard
           label="Peak (hourly)"
