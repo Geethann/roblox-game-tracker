@@ -1,6 +1,6 @@
 // Tests for the charts pages: sorting, filtering and each list's rules.
 import { describe, expect, it } from "vitest";
-import { filterGames, findView, genreOptions, sortGames } from "./charts.js";
+import { filterGames, findView, genreOptions, nameSortKey, sortGames } from "./charts.js";
 
 const RULES = { risingMinPlayers: 100, topRatedMinVotes: 1000, topRatedMinPlayers: 100 };
 const game = (name, extra = {}) => ({
@@ -9,7 +9,34 @@ const game = (name, extra = {}) => ({
 });
 const filters = (overrides = {}) => ({ view: findView("most-played"), rules: RULES, query: "", genre: "", minPlayers: 0, ...overrides });
 
+describe("nameSortKey", () => {
+  it.each([
+    ["[🎃] Blox Fruits", "Blox Fruits"],
+    ["  [UPD] Strideway", "Strideway"],
+    ["(👻) Car Driving", "Car Driving"],
+    ["【NEW】 Test", "Test"],
+    ["[⏳ 6H] 🧈 Stack A Butter", "Stack A Butter"],
+    ["+1 Gun Forge", "1 Gun Forge"],
+    ["99 Nights in the Forest", "99 Nights in the Forest"],
+    ["Brookhaven 🏡RP", "Brookhaven 🏡RP"],   // only the start is tidied
+    ["🔥🔥", "🔥🔥"],                          // all symbols: sorts by itself
+  ])("%j sorts as %j", (name, key) => {
+    expect(nameSortKey(name)).toBe(key);
+  });
+});
+
 describe("sortGames", () => {
+  it("sorts names A-Z ignoring tags, emoji and case", () => {
+    const names = ["[UPD] Zombie", " apple", "(👻) Mango", "🎃 banana"];
+    expect(sortGames(names.map((n) => game(n)), "name", "asc").map((g) => g.name))
+      .toEqual([" apple", "🎃 banana", "(👻) Mango", "[UPD] Zombie"]);
+  });
+
+  it("puts numbers in number order (2 before 10)", () => {
+    expect(sortGames([game("Game 10"), game("Game 2")], "name", "asc").map((g) => g.name))
+      .toEqual(["Game 2", "Game 10"]);
+  });
+
   const games = [game("A", { playing: 5 }), game("B", { playing: null }), game("C", { playing: 50 })];
 
   it("sorts high to low and low to high", () => {

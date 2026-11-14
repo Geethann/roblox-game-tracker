@@ -4,7 +4,8 @@ import { useMemo, useState } from "react";
 import { Area, AreaChart, CartesianGrid, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { ChartLine, Download, Table2 } from "lucide-react";
 import {
-  METRICS, downloadFile, formatPointTime, formatTick, slugify, timeTicks, toCsv, valueScale,
+  METRICS, downloadFile, eventsByPoint, formatEventTime, formatPointTime, formatTick, slugify, timeTicks,
+  toCsv, valueScale,
 } from "../lib/history.js";
 import { formatDate, formatNumber } from "../lib/format.js";
 import { Skeleton } from "./Feedback.jsx";
@@ -44,7 +45,8 @@ export default function HistoryPanel({
 
       {historyStartsLate && (
         <p className="muted small history-note">
-          History for this game starts {formatDate(game.trackedSince)}, when the tracker began recording it.
+          History for this game starts {formatDate(game.trackedSince)}, when the tracker began recording it,
+          so this shows everything recorded so far. Longer ranges fill in as more history builds up.
         </p>
       )}
 
@@ -92,6 +94,10 @@ function Chart({ data, metric, resolution, events, highlightedEvent }) {
   const step = resolution === "day" ? 86_400 : 3_600;
   const visibleEvents = events.filter((e) => e.t >= first && e.t <= last + step);
   const scale = useMemo(() => valueScale(metric, data.map((d) => d.value)), [metric, data]);
+  const eventsAt = useMemo(
+    () => eventsByPoint(events, data.map((d) => d.t), resolution),
+    [events, data, resolution],
+  );
 
   return (
     <div className="history-chart">
@@ -112,7 +118,7 @@ function Chart({ data, metric, resolution, events, highlightedEvent }) {
             cursor={{ strokeWidth: 1 }}
             content={({ active, payload }) => active && payload?.length
               ? <ChartTooltip row={payload[0].payload} metric={metric} resolution={resolution}
-                              events={events} step={step} />
+                              events={eventsAt.get(payload[0].payload.t) ?? []} />
               : null}
           />
           <Area type="linear" dataKey="value" stroke="currentColor" strokeWidth={2}
@@ -125,10 +131,9 @@ function Chart({ data, metric, resolution, events, highlightedEvent }) {
   );
 }
 
-/** The box that follows the pointer: the value first (biggest), then when, then any events. */
-function ChartTooltip({ row, metric, resolution, events, step }) {
+/** The box that follows the pointer: the value first (biggest), then when, then any updates near it. */
+function ChartTooltip({ row, metric, resolution, events }) {
   const { point } = row;
-  const nearby = events.filter((e) => e.t >= row.t && e.t < row.t + step);
   return (
     <div className="chart-tooltip">
       <div className="chart-tooltip-value">
@@ -139,9 +144,10 @@ function ChartTooltip({ row, metric, resolution, events, step }) {
         <div className="chart-tooltip-extra">Peak (hourly): {formatNumber(point.peak)}</div>
       )}
       <div className="chart-tooltip-time">{formatPointTime(row.t, resolution, point.partial)}</div>
-      {nearby.map((e) => (
+      {events.map((e) => (
         <div key={`${e.kind}-${e.t}`} className="chart-tooltip-event">
           {e.kind === "update" ? "Update published" : `Renamed to "${e.detail}"`}
+          <span className="chart-tooltip-event-time"> · {formatEventTime(e.t)}</span>
         </div>
       ))}
     </div>

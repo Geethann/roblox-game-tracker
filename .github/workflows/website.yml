@@ -48,9 +48,15 @@ jobs:
           VITE_CF_ANALYTICS_TOKEN: ${{ vars.CF_ANALYTICS_TOKEN }}
       # GitHub Pages only knows about real files, so visiting /game/123
       # directly would show GitHub's own "not found" page. Serving the app
-      # as the 404 page lets the app open and show the right page instead.
+      # as the 404 page lets the app open and show the right page instead
+      # (with a "404" status, which visitors never see).
+      # The fixed pages also get their own copy (GitHub Pages serves /charts
+      # from charts.html), so they answer with a normal "200 OK" status, which
+      # link previews and search engines expect.
       - name: Make every page address work on GitHub Pages
-        run: cp dist/index.html dist/404.html
+        run: |
+          cp dist/index.html dist/404.html
+          for page in charts compare about; do cp dist/index.html "dist/$page.html"; done
       - name: Package the site for GitHub Pages
         if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
         uses: actions/upload-pages-artifact@v5

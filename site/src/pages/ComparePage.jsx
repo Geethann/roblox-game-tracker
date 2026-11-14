@@ -113,7 +113,7 @@ export default function ComparePage() {
         <div className="segmented" role="group" aria-label="Time range">
           {RANGES.map((r) => (
             <button key={r.key} type="button" aria-pressed={r.key === range}
-                    onClick={() => update({ range: r.key === DEFAULT_RANGE ? null : r.key })}>
+                    onClick={() => update({ range: r.key })}>
               {r.label}
             </button>
           ))}
@@ -128,7 +128,7 @@ export default function ComparePage() {
             <div className="segmented" role="group" aria-label="What to show">
               {Object.entries(METRICS).map(([key, m]) => (
                 <button key={key} type="button" aria-pressed={key === metricKey}
-                        onClick={() => update({ metric: key === "players" ? null : key, mode: null })}>
+                        onClick={() => update({ metric: key, mode: null })}>
                   {m.label}
                 </button>
               ))}

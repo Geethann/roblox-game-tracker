@@ -51,24 +51,29 @@ export async function fetchGameStats(universeIds) {
   ]);
 
   const votesById = new Map(votes.flatMap((reply) => reply.data).map((v) => [v.id, v]));
+  const asked = new Set(universeIds.map(Number));
 
-  return details.flatMap((reply) => reply.data).map((game) => ({
-    universeId: game.id,
-    rootPlaceId: game.rootPlaceId,
-    name: game.name,
-    creatorName: game.creator?.name ?? null,
-    description: game.description ?? "",
-    // Roblox's newest, most specific genre first (e.g. "Battlegrounds & Fighting").
-    genre: [game.genre_l2, game.genre_l1, game.genre].find((g) => g && g !== "All") ?? null,
-    maxPlayers: game.maxPlayers ?? null,
-    createdAt: toUnix(game.created),
-    lastUpdated: toUnix(game.updated),
-    playing: game.playing,
-    visits: game.visits,
-    favorites: game.favoritedCount,
-    likes: votesById.get(game.id)?.upVotes ?? null,
-    dislikes: votesById.get(game.id)?.downVotes ?? null,
-  }));
+  return details.flatMap((reply) => reply.data)
+    // For some unknown IDs Roblox sends a placeholder ("[TITLE UNAVAILABLE]",
+    // ID 0, place 0) instead of leaving the game out. Treat that as "no such game".
+    .filter((game) => asked.has(game.id) && game.rootPlaceId > 0)
+    .map((game) => ({
+      universeId: game.id,
+      rootPlaceId: game.rootPlaceId,
+      name: game.name,
+      creatorName: game.creator?.name ?? null,
+      description: game.description ?? "",
+      // Roblox's newest, most specific genre first (e.g. "Battlegrounds & Fighting").
+      genre: [game.genre_l2, game.genre_l1, game.genre].find((g) => g && g !== "All") ?? null,
+      maxPlayers: game.maxPlayers ?? null,
+      createdAt: toUnix(game.created),
+      lastUpdated: toUnix(game.updated),
+      playing: game.playing,
+      visits: game.visits,
+      favorites: game.favoritedCount,
+      likes: votesById.get(game.id)?.upVotes ?? null,
+      dislikes: votesById.get(game.id)?.downVotes ?? null,
+    }));
 }
 
 /**

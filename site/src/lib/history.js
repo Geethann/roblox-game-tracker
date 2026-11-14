@@ -211,6 +211,34 @@ const TOOLTIP_FORMATS = {
 export const formatPointTime = (t, resolution, partial = false) =>
   TOOLTIP_FORMATS[resolution].format(t * 1000) + (partial ? " (so far)" : "");
 
+/**
+ * Which chart point each update belongs to, so hovering the chart shows it:
+ *   hourly chart - the reading nearest the update, so hovering right on its
+ *                  marker line shows it (the hover always snaps to the nearest reading)
+ *   daily chart  - the day it happened on
+ * Returns a Map of point time -> [events]. Updates with no point near them
+ * (e.g. before tracking began) aren't in it.
+ */
+export function eventsByPoint(events, times, resolution) {
+  const step = resolution === "day" ? 86_400 : 3_600;
+  const byPoint = new Map();
+  for (const event of events) {
+    let best = null;
+    for (const t of times) {
+      if (resolution === "day") {
+        if (event.t >= t && event.t < t + step) best = t;
+      } else if (Math.abs(event.t - t) < step && (best === null || Math.abs(event.t - t) < Math.abs(event.t - best))) {
+        best = t;
+      }
+    }
+    if (best !== null) byPoint.set(best, [...(byPoint.get(best) ?? []), event]);
+  }
+  return byPoint;
+}
+
+/** An update's time of day in the hover box, e.g. "19:46" (or "7:46 PM", by the visitor's settings). */
+export const formatEventTime = (t) => fmt({ hour: "2-digit", minute: "2-digit" }).format(t * 1000);
+
 /** When a range starts (unix seconds), matching how the API works it out. */
 export function rangeStart(rangeKey, nowMs = Date.now()) {
   const range = RANGES.find((r) => r.key === rangeKey);

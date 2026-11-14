@@ -2,7 +2,7 @@
 // stat cards show. Each test is named after the promise it checks.
 import { describe, expect, it } from "vitest";
 import {
-  METRICS, preparePoints, rangeStart, slugify, summarise, timeTicks, toCsv, valueScale,
+  METRICS, eventsByPoint, preparePoints, rangeStart, slugify, summarise, timeTicks, toCsv, valueScale,
 } from "./history.js";
 
 const HOUR = 3600;
@@ -122,5 +122,25 @@ describe("CSV export", () => {
   it("makes safe file names from game titles", () => {
     expect(slugify("[🎃] Jujutsu Shenanigans!")).toBe("jujutsu-shenanigans");
     expect(slugify("🎃🎃")).toBe("game");
+  });
+});
+
+describe("eventsByPoint", () => {
+  const update = (t) => ({ t, kind: "update", detail: null });
+
+  it("hourly: an update belongs to the nearest reading, so hovering on its marker shows it", () => {
+    const times = [0, HOUR, 2 * HOUR];
+    const map = eventsByPoint([update(46 * 60), update(HOUR + 10 * 60)], times, "hour");
+    expect(map.get(HOUR)).toEqual([update(46 * 60), update(HOUR + 10 * 60)]); // 0:46 is nearer 1:00 than 0:00
+    expect(map.has(0)).toBe(false);
+  });
+
+  it("hourly: an update with no reading within an hour isn't attached (e.g. before tracking began)", () => {
+    expect(eventsByPoint([update(-2 * HOUR)], [0, HOUR], "hour").size).toBe(0);
+  });
+
+  it("daily: an update belongs to the day it happened on", () => {
+    const map = eventsByPoint([update(DAY + 23 * HOUR)], [0, DAY, 2 * DAY], "day");
+    expect([...map.keys()]).toEqual([DAY]);
   });
 });

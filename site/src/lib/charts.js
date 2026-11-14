@@ -55,16 +55,33 @@ export function filterGames(games, { view, rules, query, genre, minPlayers }) {
     && (game.playing ?? 0) >= minPlayers);
 }
 
+/**
+ * What a game's name is sorted by: without leading spaces, tags like "[UPD]",
+ * "(👻)" or "【NEW】", or emoji and symbols, so "[🎃] Blox Fruits" sorts under B.
+ * Roblox developers decorate names a lot, which would otherwise fill the top
+ * of an A-Z list with brackets.
+ */
+export function nameSortKey(name) {
+  let key = name.trim();
+  let before;
+  do {
+    before = key;
+    key = key.replace(/^(\[[^\]]*\]|\([^)]*\)|【[^】]*】|[^\p{L}\p{N}])\s*/u, "");
+  } while (key !== before && key !== "");
+  return key || name.trim(); // a name that's all symbols sorts by itself
+}
+
 /** Sort by one column. Games missing that number always go to the bottom. */
 export function sortGames(games, key, dir) {
   const sign = dir === "asc" ? 1 : -1;
+  const value = key === "name" ? (game) => nameSortKey(game.name) : (game) => game[key];
   return [...games].sort((a, b) => {
-    const x = a[key];
-    const y = b[key];
+    const x = value(a);
+    const y = value(b);
     if (x == null && y == null) return 0;
     if (x == null) return 1;
     if (y == null) return -1;
-    if (typeof x === "string") return sign * x.localeCompare(y);
+    if (typeof x === "string") return sign * x.localeCompare(y, undefined, { sensitivity: "base", numeric: true });
     return sign * (x - y);
   });
 }

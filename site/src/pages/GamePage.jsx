@@ -45,10 +45,12 @@ export default function GamePage() {
   const [params, setParams] = useSearchParams();
   const range = isRange(params.get("range")) ? params.get("range") : DEFAULT_RANGE;
   const metric = isMetric(params.get("metric")) ? params.get("metric") : "players";
-  function setParam(key, value, defaultValue) {
+  // Whatever you pick always shows in the address (even the default), so the
+  // address bar matches the buttons and a copied link always means the same view.
+  function setParam(key, value) {
     setParams((old) => {
       const next = new URLSearchParams(old);
-      if (value === defaultValue) next.delete(key); else next.set(key, value);
+      next.set(key, value);
       return next;
     }, { replace: true }); // don't fill the Back button with every click
   }
@@ -144,7 +146,7 @@ export default function GamePage() {
         <div className="segmented" role="group" aria-label="Time range">
           {RANGES.map((r) => (
             <button key={r.key} type="button" aria-pressed={r.key === range}
-                    onClick={() => setParam("range", r.key, DEFAULT_RANGE)}>
+                    onClick={() => setParam("range", r.key)}>
               {r.label}
             </button>
           ))}
@@ -179,7 +181,7 @@ export default function GamePage() {
       ) : (
         <HistoryPanel
           game={g} points={points} resolution={resolution} events={events}
-          metricKey={metric} onMetricChange={(key) => setParam("metric", key, "players")}
+          metricKey={metric} onMetricChange={(key) => setParam("metric", key)}
           rangeKey={range} historyStartsLate={historyStartsLate}
           loading={!historyIsCurrent} updating={history.isFetching && history.isPlaceholderData}
           highlightedEvent={highlightedEvent}

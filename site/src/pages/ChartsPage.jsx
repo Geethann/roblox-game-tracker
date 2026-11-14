@@ -8,7 +8,7 @@ import { Link, useSearchParams } from "react-router";
 import { ArrowDown, ArrowUp, ChevronDown, ChevronUp, SearchX } from "lucide-react";
 import { useCharts } from "../lib/api.js";
 import {
-  DEFAULT_VIEW, MIN_PLAYER_OPTIONS, SORTABLE, VIEWS, filterGames, findView, genreOptions, isSortable, sortGames,
+  MIN_PLAYER_OPTIONS, SORTABLE, VIEWS, filterGames, findView, genreOptions, isSortable, sortGames,
 } from "../lib/charts.js";
 import { formatCompact, formatNumber, formatPercent, timeAgo } from "../lib/format.js";
 import { useNow } from "../lib/hooks.js";
@@ -74,7 +74,7 @@ export default function ChartsPage() {
       <div className="view-tabs" role="group" aria-label="Chart">
         {VIEWS.map((v) => (
           <button key={v.key} type="button" aria-pressed={v.key === view.key}
-                  onClick={() => update({ view: v.key === DEFAULT_VIEW ? null : v.key, sort: null, dir: null })}>
+                  onClick={() => update({ view: v.key, sort: null, dir: null })}>
             {v.title}
           </button>
         ))}
