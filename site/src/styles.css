@@ -136,11 +136,16 @@ a  { color: inherit; text-decoration: none; }
 .header-inner { display: flex; align-items: center; gap: 12px; height: 64px; }
 
 .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; flex-shrink: 0; }
-.brand-mark {
-  display: grid; place-items: center;
-  width: 32px; height: 32px; border-radius: 9px;
-  background: var(--accent); color: #fff;
+/* Two versions of the logo: one made for light backgrounds, one for dark.
+   Only the one that matches the current theme is shown. */
+.brand-logo { display: block; width: 32px; height: 32px; }
+.brand-logo-dark { display: none; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .brand-logo-light { display: none; }
+  :root:not([data-theme="light"]) .brand-logo-dark { display: block; }
 }
+:root[data-theme="dark"] .brand-logo-light { display: none; }
+:root[data-theme="dark"] .brand-logo-dark { display: block; }
 @media (max-width: 720px) { .brand-name { display: none; } } /* logo only on phones */
 
 .nav-link {
