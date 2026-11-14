@@ -159,7 +159,14 @@ async function game(universeId, env, visitor) {
     // Roblox failed, or sent nothing usable for a game we know exists. Show our
     // latest reading, marked "stale" with when it was taken, rather than an
     // error or "no such game". Never cached, so the next visit tries Roblox again.
-    if (last) return withTiming(json({ ...last, icon: icons.get(universeId) ?? last.icon, ...extras, stale: true }, 0), trace);
+    // `unavailable`: Roblox did answer, but listed the game as unavailable (it's
+    // private, closed for an update or under review), so the page can say that
+    // instead of "Roblox isn't answering".
+    if (last) {
+      return withTiming(json({
+        ...last, icon: icons.get(universeId) ?? last.icon, ...extras, stale: true, unavailable: live !== null,
+      }, 0), trace);
+    }
     if (live === null) throw new Error("Roblox is unavailable and there's no saved reading for this game");
     return withTiming(error(404, "There's no Roblox game with that ID"), trace);
   }

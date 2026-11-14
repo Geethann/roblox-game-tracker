@@ -122,6 +122,7 @@ function Chart({ data, metric, resolution, events, highlightedEvent }) {
           )}
           <Tooltip
             isAnimationActive={false}
+            filterNull={false} // still show the box (and its updates) where a reading has no value
             cursor={{ strokeWidth: 1 }}
             content={({ active, payload }) => active && payload?.length
               ? <ChartTooltip row={payload[0].payload} metric={metric} resolution={resolution}
@@ -152,10 +153,15 @@ function ChartTooltip({ row, metric, resolution, events }) {
   const { point } = row;
   return (
     <div className="chart-tooltip">
-      <div className="chart-tooltip-value">
-        <span className="line-key" aria-hidden="true" />
-        {metric.format(row.value)}
-      </div>
+      {row.value == null ? (
+        // e.g. visits gained in the first hour: there's no earlier reading to compare with.
+        <div className="chart-tooltip-extra">No figure for this reading</div>
+      ) : (
+        <div className="chart-tooltip-value">
+          <span className="line-key" aria-hidden="true" />
+          {metric.format(row.value)}
+        </div>
+      )}
       {metric === METRICS.players && point.peak != null && (
         <div className="chart-tooltip-extra">Peak (hourly): {formatNumber(point.peak)}</div>
       )}

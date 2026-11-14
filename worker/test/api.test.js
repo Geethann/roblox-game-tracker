@@ -172,7 +172,7 @@ describe("a game's page", () => {
     expect(response.headers.get("Cache-Control")).toBe("no-store"); // try Roblox again next time
     expect(await response.json()).toMatchObject({
       universeId: 209, name: "Saved Game", playing: 8, icon: "https://tr.rbxcdn.com/saved",
-      stale: true, fetchedAt: 1_790_003_600, isTracking: true,
+      stale: true, unavailable: false, fetchedAt: 1_790_003_600, isTracking: true,
     });
   });
 
@@ -207,7 +207,8 @@ describe("a game's page", () => {
     fakeRoblox({ placeholders: [214] });
     const response = await request("/api/games/214");
     expect(response.status).toBe(200);
-    expect(await response.json()).toMatchObject({ name: "Tracked Game", playing: 3, stale: true });
+    // Roblox answered, so the page can say the game is unavailable (not that Roblox is down).
+    expect(await response.json()).toMatchObject({ name: "Tracked Game", playing: 3, stale: true, unavailable: true });
   });
 
   it("doesn't keep a visitor waiting long when Roblox keeps refusing", async () => {

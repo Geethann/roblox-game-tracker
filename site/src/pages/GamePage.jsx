@@ -156,7 +156,13 @@ export default function GamePage() {
       {/* If Roblox doesn't answer, the latest hourly reading is shown instead. That's
           normal for an hourly tracker, so the cards just say when it was checked; this
           notice only appears if the numbers are old (Roblox has been down a while). */}
-      {g.stale && now / 1000 - g.fetchedAt > OLD_READING && (
+      {g.stale && g.unavailable && (
+        <Notice>
+          Roblox currently lists this game as unavailable: it may be private, closed for an
+          update or under review. These are the last numbers recorded ({timeAgo(g.fetchedAt, now)}).
+        </Notice>
+      )}
+      {g.stale && !g.unavailable && now / 1000 - g.fetchedAt > OLD_READING && (
         <Notice>
           Roblox isn&apos;t answering right now, so these are the numbers from the last
           check ({timeAgo(g.fetchedAt, now)}). Live numbers come back automatically.
