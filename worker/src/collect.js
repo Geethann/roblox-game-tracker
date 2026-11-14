@@ -13,6 +13,7 @@ export const SLICES = 12;
 export async function collectSlice(env, slice, now) {
   const hour = Math.floor(now.getTime() / 3_600_000) * 3600; // start of this hour
   const seenAt = nowSeconds();
+  const collected = await slicesCollected(env, hour);
 
   // 1. Which games are in this slice, and what did we last know about them?
   const { results: games } = await env.DB.prepare(
@@ -22,10 +23,12 @@ export async function collectSlice(env, slice, now) {
   ).bind(slice).all();
 
   // 2. Ask Roblox for their current numbers and icons, at the same time.
-  //    Icons are nice-to-have: if that request fails, the old ones are kept.
+  //    Icons and likes/dislikes are nice-to-have: if Roblox refuses those, the
+  //    old icons are kept and this hour's likes are left blank, but the
+  //    players/visits/favourites reading is still saved.
   const ids = games.map((g) => g.universe_id);
   const [stats, icons] = games.length
-    ? await Promise.all([fetchGameStats(ids), fetchIcons(ids).catch(() => new Map())])
+    ? await Promise.all([fetchGameStats(ids, { optionalVotes: true }), fetchIcons(ids).catch(() => new Map())])
     : [[], new Map()];
   const before = new Map(games.map((g) => [g.universe_id, g]));
 
@@ -74,6 +77,14 @@ export async function collectSlice(env, slice, now) {
   }
 
   statements.push(setMeta(env, "last_collect", { at: seenAt, slice, games: stats.length }));
+  statements.push(setMeta(env, "collected", { hour, slices: [...new Set([...collected, slice])] }));
   await env.DB.batch(statements); // all-or-nothing: either everything saves or nothing does
   console.log(`Slice ${slice}: saved ${stats.length} of ${games.length} games`);
+}
+
+/** Which slices have already been saved this hour (so a missed one can be retried). */
+export async function slicesCollected(env, hour) {
+  const row = await env.DB.prepare("SELECT value FROM meta WHERE key = 'collected'").first();
+  const record = row ? JSON.parse(row.value) : null;
+  return record?.hour === hour ? record.slices : [];
 }

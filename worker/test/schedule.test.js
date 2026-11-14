@@ -57,6 +57,52 @@ describe("the schedule", () => {
   });
 });
 
+describe("when Roblox refuses a slice", () => {
+  it("retries the missed slice later in the same hour, so its games get a reading", async () => {
+    await addGame(1);
+    await addGame(2);
+    fakeRoblox({ games: { 1: {}, 2: {} } });
+    await runAt(13, 0);                       // slice 0: nothing in it
+    fakeRoblox({ games: { 1: {}, 2: {} }, down: ["details"] });
+    await runAt(13, 5);                       // slice 1: Roblox refuses
+    expect(await rows("SELECT universe_id FROM snapshots")).toEqual([]);
+
+    fakeRoblox({ games: { 1: {}, 2: {} } });
+    await runAt(13, 10);                      // slice 2, and slice 1 again
+    expect(await rows("SELECT universe_id, hour FROM snapshots ORDER BY universe_id")).toEqual([
+      { universe_id: 1, hour: Date.UTC(2026, 10, 14, 13) / 1000 },
+      { universe_id: 2, hour: Date.UTC(2026, 10, 14, 13) / 1000 },
+    ]);
+  });
+
+  it("saves a retry under the current hour, never an earlier one", async () => {
+    await addGame(1);
+    fakeRoblox({ games: { 1: {} }, down: ["details"] });
+    await runAt(13, 5);                       // missed at 13:05
+    fakeRoblox({ games: { 1: {} } });
+    await runAt(14, 0);
+    await runAt(14, 10);                      // the next hour's runs read it as 14:00, not 13:00
+    expect(await rows("SELECT hour FROM snapshots")).toEqual([{ hour: Date.UTC(2026, 10, 14, 14) / 1000 }]);
+  });
+
+  it("retries only slices that were missed, not ones already saved", async () => {
+    await addGame(1);
+    fakeRoblox({ games: { 1: {} } });
+    await runAt(13, 0);
+    await runAt(13, 5);                       // slice 1 saved
+    const requested = fakeRoblox({ games: { 1: {} } });
+    await runAt(13, 10);
+    expect(requested.some((url) => url.includes("universeIds=1"))).toBe(false);
+  });
+
+  it("still does the hour's other jobs", async () => {
+    await addGame(12);
+    fakeRoblox({ games: { 12: {} }, down: ["details"] });
+    await runAt(14, 0);
+    expect(await getMeta("charts")).not.toBeNull();
+  });
+});
+
 describe("finding new games", () => {
   it("adds the games on Roblox's front page at half past, once each", async () => {
     await addGame(102, { name: "Already Tracked" });

@@ -72,7 +72,7 @@ export default function HomePage() {
         <div className="section-head">
           <h2>Charts</h2>
           {leaderboards.data?.at && (
-            <span className="muted small">Updated {timeAgo(leaderboards.data.at, now)}</span>
+            <span className="muted small">Refreshed {timeAgo(leaderboards.data.at, now)}</span>
           )}
         </div>
         {leaderboards.isError ? (

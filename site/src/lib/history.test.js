@@ -2,7 +2,7 @@
 // stat cards show. Each test is named after the promise it checks.
 import { describe, expect, it } from "vitest";
 import {
-  METRICS, eventMarkers, eventsByPoint, preparePoints, rangeStart, slugify, summarise, timeTicks, toCsv, valueScale,
+  METRICS, eventsByPoint, formatTick, preparePoints, rangeStart, slugify, summarise, timeTicks, toCsv, valueScale,
 } from "./history.js";
 
 const HOUR = 3600;
@@ -16,11 +16,6 @@ describe("preparePoints", () => {
     const pts = preparePoints([point(0, { visits: 1000 }), point(HOUR, { visits: 1250 })], "hour", 10 * DAY);
     expect(pts[0].visitsGained).toBeNull(); // nothing to compare the first reading with
     expect(pts[1].visitsGained).toBe(250);
-  });
-
-  it("doesn't guess across a gap in the readings", () => {
-    const pts = preparePoints([point(0), point(3 * HOUR, { visits: 5000 })], "hour", 10 * DAY);
-    expect(pts[1].visitsGained).toBeNull();
   });
 
   it("leaves today's unfinished day out of daily gains (no fake drop at the end)", () => {
@@ -96,6 +91,11 @@ describe("timeTicks", () => {
     }
   });
 
+  it("labels months without anything that looks like a day, and January with its year", () => {
+    expect(formatTick(new Date(2026, 7, 1).getTime() / 1000, "month")).not.toMatch(/\d/); // "Aug"
+    expect(formatTick(new Date(2027, 0, 1).getTime() / 1000, "month")).toBe("2027");
+  });
+
   it("switches to months for a year", () => {
     const start = Date.UTC(2025, 10, 13) / 1000;
     expect(timeTicks(start, start + 365 * DAY).unit).toBe("month");
@@ -125,71 +125,41 @@ describe("CSV export", () => {
   });
 });
 
-describe("eventsByPoint", () => {
+describe("eventsByPoint (which reading gets an update's marker)", () => {
   const update = (t) => ({ t, kind: "update", detail: null });
 
-  it("hourly: an update belongs to the nearest reading, so hovering on its marker shows it", () => {
-    const times = [0, HOUR, 2 * HOUR];
-    const map = eventsByPoint([update(46 * 60), update(HOUR + 10 * 60)], times, "hour");
-    expect(map.get(HOUR)).toEqual([update(46 * 60), update(HOUR + 10 * 60)]); // 0:46 is nearer 1:00 than 0:00
+  it("hourly: an update belongs to the first reading after it", () => {
+    const map = eventsByPoint([update(10 * 60), update(46 * 60), update(HOUR + 10 * 60)], [0, HOUR, 2 * HOUR], "hour");
+    expect(map.get(HOUR)).toEqual([update(10 * 60), update(46 * 60)]);
+    expect(map.get(2 * HOUR)).toEqual([update(HOUR + 10 * 60)]);
     expect(map.has(0)).toBe(false);
   });
 
-  it("hourly: an update with no reading within an hour isn't attached (e.g. before tracking began)", () => {
-    expect(eventsByPoint([update(-2 * HOUR)], [0, HOUR], "hour").size).toBe(0);
+  it("hourly: an update during a missed reading belongs to the next reading", () => {
+    const map = eventsByPoint([update(HOUR + 30 * 60)], [0, HOUR, 3 * HOUR], "hour");
+    expect([...map.keys()]).toEqual([3 * HOUR]);
+  });
+
+  it("hourly: updates before the chart, or after the latest reading, aren't on it", () => {
+    expect(eventsByPoint([update(-2 * HOUR), update(2 * HOUR + 60)], [0, HOUR, 2 * HOUR], "hour").size).toBe(0);
   });
 
   it("daily: an update belongs to the day it happened on", () => {
-    const map = eventsByPoint([update(DAY + 23 * HOUR)], [0, DAY, 2 * DAY], "day");
-    expect([...map.keys()]).toEqual([DAY]);
+    const map = eventsByPoint([update(DAY + 7 * HOUR), update(DAY + 23 * HOUR), update(3 * DAY)], [0, DAY, 2 * DAY], "day");
+    expect([...map]).toEqual([[DAY, [update(DAY + 7 * HOUR), update(DAY + 23 * HOUR)]]]);
   });
 });
 
-describe("eventMarkers", () => {
-  const update = (t) => ({ t, kind: "update", detail: null });
-  const rename = (t, detail) => ({ t, kind: "rename", detail });
-
-  it("hourly: leaves out updates outside the chart (before it starts, or after the latest reading)", () => {
-    const markers = eventMarkers([update(-60), update(5 * HOUR), update(20 * HOUR + 35 * 60)], 0, 20 * HOUR, "hour");
-    expect(markers.map((m) => m.t)).toEqual([5 * HOUR]);
+describe("gained per hour across a missed reading", () => {
+  it("averages over a short gap instead of breaking the line", () => {
+    const pts = preparePoints([point(0, { visits: 1000 }), point(2 * HOUR, { visits: 1600 })], "hour", DAY);
+    expect(pts[1].visitsGained).toBe(300);
+    expect(pts[1].gainedOver).toBe(2);
   });
 
-  it("hourly: updates close together share one marker, at the first one's time", () => {
-    // a 20-hour chart groups updates within 24 minutes (2% of its width)
-    const events = [update(12 * HOUR + 38 * 60), update(12 * HOUR + 50 * 60), rename(13 * HOUR + 30 * 60, "New")];
-    const markers = eventMarkers(events, 0, 20 * HOUR, "hour");
-    expect(markers).toEqual([
-      { t: 12 * HOUR + 38 * 60, events: [events[0], events[1]] },
-      { t: 13 * HOUR + 30 * 60, events: [events[2]] },
-    ]);
-  });
-
-  it("hourly: the grouping scales with the chart (2 hours apart: one marker on 7 days, two on 20 hours)", () => {
-    expect(eventMarkers([update(HOUR), update(3 * HOUR)], 0, 7 * DAY, "hour")).toHaveLength(1); // 3.4h window
-    expect(eventMarkers([update(HOUR), update(3 * HOUR)], 0, 20 * HOUR, "hour")).toHaveLength(2);
-  });
-
-  it("daily: one marker per day, on that day's point, including today", () => {
-    const events = [update(DAY + 7 * HOUR), update(DAY + 21 * HOUR), update(2 * DAY + HOUR), update(3 * DAY + HOUR)];
-    const markers = eventMarkers(events, DAY, 2 * DAY, "day");
-    expect(markers).toEqual([
-      { t: DAY, events: [events[0], events[1]] },
-      { t: 2 * DAY, events: [events[2]] },
-    ]);
-  });
-});
-
-describe("eventMarkers spacing (worked out from the chart's width on screen)", () => {
-  const update = (t) => ({ t, kind: "update", detail: null });
-  it("a narrow chart (big minimum gap) merges updates that a wide one keeps apart", () => {
-    const events = [update(2 * HOUR), update(4 * HOUR)];
-    expect(eventMarkers(events, 0, 20 * HOUR, "hour", HOUR)).toHaveLength(2);      // wide screen
-    expect(eventMarkers(events, 0, 20 * HOUR, "hour", 3 * HOUR)).toHaveLength(1);  // phone
-  });
-  it("on a long daily chart, neighbouring days merge when they'd be too close to tell apart", () => {
-    const events = [update(10 * DAY), update(11 * DAY), update(40 * DAY)];
-    const markers = eventMarkers(events, 0, 365 * DAY, "day", 5 * DAY);
-    expect(markers.map((m) => [m.t / DAY, m.events.length])).toEqual([[10, 2], [40, 1]]);
+  it("doesn't guess after a long gap", () => {
+    const pts = preparePoints([point(0, { visits: 1000 }), point(5 * HOUR, { visits: 1600 })], "hour", DAY);
+    expect(pts[1].visitsGained).toBeNull();
   });
 });
 
