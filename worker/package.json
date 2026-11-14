@@ -5,10 +5,13 @@
   "scripts": {
     "dev": "wrangler dev --test-scheduled",
     "deploy": "wrangler deploy",
+    "test": "vitest run",
     "db:migrate:local": "wrangler d1 migrations apply roblox-tracker --local",
     "db:migrate:remote": "wrangler d1 migrations apply roblox-tracker --remote"
   },
   "devDependencies": {
+    "@cloudflare/vitest-plugin": "1.4.11",
+    "vitest": "4.1.12",
     "wrangler": "^4.162.0"
   }
 }

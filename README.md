@@ -49,6 +49,7 @@ flowchart LR
 - **Free-plan budget.** About 48 database writes per game per day (24 saved, 24 old ones deleted) keeps 1,500 games under D1's 100,000 writes a day. Queries look rows up by primary key instead of scanning tables, to stay inside the read allowance.
 - **Charts that read correctly.** One measure per chart (never two scales on one chart), colourblind-safe colours checked against both themes, a legend and a table view for every comparison, and each game keeps its colour when others are removed.
 - **Accessible by default.** Keyboard navigation, screen-reader labels (search combobox, `aria-sort` on tables, chart table views), reduced motion support, and visible focus outlines.
+- **Tested where it runs.** The backend tests run inside Cloudflare's real Workers runtime against a database built from the same migrations as the live one, with Roblox replaced by a pretend version. They cover the hourly readings, every chart rule, the nightly summaries, the schedule, and the API's input checks, caching, rate limits and tracking safeguards.
 - **`main` is what's live.** Every change goes through a pull request: code checks, tests and a build must pass before merging, and merging deploys automatically.
 
 ## Security
@@ -65,7 +66,7 @@ flowchart LR
 |---|---|
 | Website | React 19, Vite, React Router, TanStack Query, Recharts |
 | Backend | Cloudflare Workers (JavaScript), Cloudflare D1 (SQLite) |
-| Quality | ESLint, Vitest (unit tests for all the data logic) |
+| Quality | ESLint, Vitest: unit tests for the website's data logic, and backend tests that run inside the real Workers runtime with a local test database |
 | Deployment | GitHub Actions → Cloudflare and GitHub Pages |
 
 ## Project structure
@@ -81,6 +82,7 @@ worker/                  Cloudflare Worker
   src/maintenance.js     nightly summaries, hourly charts
   src/api.js             the public API
   migrations/            database changes, in order
+  test/                  backend tests (with a pretend Roblox, so they never touch the real one)
 .github/workflows/       checks on pull requests, deploys from main
 ```
 
@@ -99,6 +101,7 @@ npm run lint       # code checks
 # Backend, with a local test database
 cd worker
 npm ci
+npm test           # backend tests (a fresh test database each run)
 npm run db:migrate:local
 npm run dev
 ```
