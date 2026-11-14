@@ -70,13 +70,17 @@ export async function rows(sql, ...params) {
  *   games   { universeId: { name, playing, visits, updated, ... } } - what Roblox "knows"
  *   sorts   the front-page lists, in Roblox's format
  *   search  search results, in Roblox's format
- *   down    parts of Roblox that are broken, e.g. ["thumbnails"] or ["search"]
+ *   down    parts of Roblox that are broken, e.g. ["thumbnails"], ["search"], ["votes"],
+ *           ["details"] or ["games"] (= details and votes)
+ *   refuse  parts that answer "429 Too Many Requests" this many times before working,
+ *           e.g. { details: 1 }
  *   iconVersion  changes every icon link, to pretend the icons were updated
  *   placeholders IDs Roblox answers with its "[TITLE UNAVAILABLE]" placeholder
  */
 export function fakeRoblox({
-  games = {}, sorts = [], search = [], down = [], iconVersion = "v1", placeholders = [],
+  games = {}, sorts = [], search = [], down = [], iconVersion = "v1", placeholders = [], refuse = {},
 } = {}) {
+  const refusalsLeft = { ...refuse };
   const requested = [];
   vi.stubGlobal("fetch", async (input) => {
     const url = new URL(typeof input === "string" ? input : input.url);
@@ -87,8 +91,15 @@ export function fakeRoblox({
     // A broken service answers "400 Bad Request", which the code doesn't retry.
     const part = url.hostname.startsWith("thumbnails") ? "thumbnails"
       : url.pathname.includes("omni-search") ? "search"
-      : url.pathname.includes("explore-api") ? "sorts" : "games";
-    if (down.includes(part)) return new Response("Service unavailable", { status: 400 });
+      : url.pathname.includes("explore-api") ? "sorts"
+      : url.pathname.endsWith("/votes") ? "votes" : "details";
+    if (down.includes(part) || (down.includes("games") && ["details", "votes"].includes(part))) {
+      return new Response("Service unavailable", { status: 400 });
+    }
+    if (refusalsLeft[part] > 0) {
+      refusalsLeft[part] -= 1;
+      return new Response("Too many requests", { status: 429 });
+    }
 
     if (url.hostname === "games.roblox.com" && url.pathname === "/v1/games") {
       return Response.json({ data: [

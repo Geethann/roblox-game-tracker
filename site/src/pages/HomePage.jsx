@@ -5,6 +5,7 @@ import { ArrowRight, Clock, Flame, GitCompareArrows, Sparkles, ThumbsUp, Trendin
 import { useGame, useHistory, useLeaderboards } from "../lib/api.js";
 import { formatCompact, formatNumber, formatPercent, timeAgo } from "../lib/format.js";
 import { useMainGame, useNow } from "../lib/hooks.js";
+import { previewState } from "../lib/preview.js";
 import GameIcon from "../components/GameIcon.jsx";
 import { ErrorState, Skeleton } from "../components/Feedback.jsx";
 
@@ -108,7 +109,7 @@ function Leaderboard({ list, games, loading, now }) {
         <ol className="leaderboard-list">
           {games.slice(0, 10).map((game, i) => (
             <li key={game.universeId}>
-              <Link to={`/game/${game.universeId}`} className="leaderboard-row">
+              <Link to={`/game/${game.universeId}`} state={previewState(game)} className="leaderboard-row">
                 <span className="rank">{i + 1}</span>
                 <GameIcon src={game.icon} size={32} />
                 <span className="leaderboard-name">{game.name}</span>
@@ -155,7 +156,7 @@ function MainGameCard({ universeId }) {
         <p className="muted">Couldn&apos;t load your main game: {game.error.message}</p>
       ) : (
         <div className="main-game-body">
-          <Link to={`/game/${universeId}`} className="main-game-link">
+          <Link to={`/game/${universeId}`} state={previewState(g)} className="main-game-link">
             <GameIcon src={g.icon} size={56} />
             <span>
               <span className="main-game-name">{g.name}</span>

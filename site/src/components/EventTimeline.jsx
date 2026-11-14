@@ -1,12 +1,20 @@
 // A list of the game's updates and title changes in the chosen range.
-// Clicking one highlights its marker on the chart.
+// Clicking one highlights its marker on the chart. Updates that aren't on the
+// chart (from before tracking began, or since the latest hourly reading) say so.
 import { useState } from "react";
 import { PencilLine, Rocket } from "lucide-react";
 import { formatDateTime, timeAgo } from "../lib/format.js";
 
 const SHOW_AT_FIRST = 6;
 
-export default function EventTimeline({ events, highlighted, onHighlight, now }) {
+/** Why an update has no marker on the chart, or null if it has one. */
+function offChartNote(event, span) {
+  if (!span || span.has(event.t)) return null;
+  if (span.last != null && event.t > span.last) return "Not on the chart yet: it appears after the next hourly reading.";
+  return "Before this game's chart starts.";
+}
+
+export default function EventTimeline({ events, highlighted, onHighlight, now, chartSpan }) {
   const [showAll, setShowAll] = useState(false);
   const newestFirst = [...events].reverse();
   const shown = showAll ? newestFirst : newestFirst.slice(0, SHOW_AT_FIRST);
@@ -22,18 +30,29 @@ export default function EventTimeline({ events, highlighted, onHighlight, now })
           {shown.map((event) => {
             const isOn = event.t === highlighted;
             const Icon = event.kind === "update" ? Rocket : PencilLine;
+            const offChart = offChartNote(event, chartSpan);
+            const content = (
+              <>
+                <span className="timeline-icon" aria-hidden="true"><Icon size={15} /></span>
+                <span className="timeline-text">
+                  <span>{event.kind === "update" ? "Update published" : `Renamed to "${event.detail}"`}</span>
+                  <span className="muted small" title={formatDateTime(event.t)}>
+                    {formatDateTime(event.t)} · {timeAgo(event.t, now)}
+                  </span>
+                  {offChart && <span className="muted small">{offChart}</span>}
+                </span>
+              </>
+            );
             return (
               <li key={`${event.kind}-${event.t}`}>
-                <button type="button" className={`timeline-item${isOn ? " is-highlighted" : ""}`}
-                        aria-pressed={isOn} onClick={() => onHighlight(isOn ? null : event.t)}>
-                  <span className="timeline-icon" aria-hidden="true"><Icon size={15} /></span>
-                  <span className="timeline-text">
-                    <span>{event.kind === "update" ? "Update published" : `Renamed to "${event.detail}"`}</span>
-                    <span className="muted small" title={formatDateTime(event.t)}>
-                      {formatDateTime(event.t)} · {timeAgo(event.t, now)}
-                    </span>
-                  </span>
-                </button>
+                {offChart ? (
+                  <div className="timeline-item is-off-chart">{content}</div>
+                ) : (
+                  <button type="button" className={`timeline-item${isOn ? " is-highlighted" : ""}`}
+                          aria-pressed={isOn} onClick={() => onHighlight(isOn ? null : event.t)}>
+                    {content}
+                  </button>
+                )}
               </li>
             );
           })}

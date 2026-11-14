@@ -176,6 +176,51 @@ describe("a game's page", () => {
     });
   });
 
+  it("tries again quickly if Roblox refuses once, so the page isn't slowed down", async () => {
+    fakeRoblox({ games: { 211: { playing: 4 } }, refuse: { details: 1, votes: 1 } });
+    const started = Date.now();
+    const response = await request("/api/games/211");
+    expect(Date.now() - started).toBeLessThan(1500); // the old policy waited 2s before retrying
+    expect(await response.json()).toMatchObject({ playing: 4, likes: 90, stale: false });
+    expect(response.headers.get("Server-Timing")).toMatch(/details;dur=\d+;desc="2 tries, HTTP 429"/);
+  });
+
+  it("still shows live numbers if only the likes/dislikes request fails, using the saved ones", async () => {
+    await addGame(212);
+    await addReading(212, 1_790_000_000, { likes: 70, dislikes: 30 });
+    fakeRoblox({ games: { 212: { playing: 9 } }, down: ["votes"] });
+    expect(await (await request("/api/games/212")).json())
+      .toMatchObject({ playing: 9, likes: 70, dislikes: 30, stale: false });
+  });
+
+  it("uses the saved icon if the icon request fails", async () => {
+    await addGame(213, { icon: "https://tr.rbxcdn.com/saved/213" });
+    await addReading(213, 1_790_000_000);
+    fakeRoblox({ games: { 213: {} }, down: ["thumbnails"] });
+    expect(await (await request("/api/games/213")).json())
+      .toMatchObject({ icon: "https://tr.rbxcdn.com/saved/213", stale: false });
+  });
+
+  it("never says a game we track doesn't exist: an empty or placeholder answer shows the last reading", async () => {
+    await addGame(214, { name: "Tracked Game" });
+    await addReading(214, 1_790_000_000, { playing: 3 });
+    fakeRoblox({ placeholders: [214] });
+    const response = await request("/api/games/214");
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ name: "Tracked Game", playing: 3, stale: true });
+  });
+
+  it("doesn't keep a visitor waiting long when Roblox keeps refusing", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    await addGame(215);
+    await addReading(215, 1_790_000_000, { playing: 6 });
+    fakeRoblox({ games: { 215: {} }, refuse: { details: 5, votes: 5, thumbnails: 5 } });
+    const started = Date.now();
+    const game = await (await request("/api/games/215")).json();
+    expect(Date.now() - started).toBeLessThan(1500);
+    expect(game).toMatchObject({ playing: 6, stale: true });
+  });
+
   it("live answers say they're live", async () => {
     fakeRoblox({ games: { 210: {} } });
     expect(await (await request("/api/games/210")).json()).toMatchObject({ stale: false });

@@ -28,6 +28,10 @@ export default function ComparePage() {
   const [storedMain] = useMainGame();
   const now = useNow();
   const [view, setView] = useState("chart");
+  // Names and icons we already know (from the search box, or your saved main game),
+  // shown while each game's live numbers load, instead of "Loading…".
+  const [known, setKnown] = useState({});
+  const remember = (game) => setKnown((k) => ({ ...k, [game.universeId]: { name: game.name, icon: game.icon } }));
 
   // Who's being compared: the address first, then the visitor's saved main game.
   const urlMain = parseIds(params.get("main"), { limit: 1 })[0] ?? null;
@@ -75,19 +79,21 @@ export default function ComparePage() {
   const resolution = series.find(Boolean)?.resolution ?? "hour";
   const rows = allLoaded ? mergeSeries(shown.map((i) => series[i]), metric.value, mode) : [];
   const updating = historyQueries.some((q) => q.isFetching && q.isPlaceholderData);
-  const named = shown.map((i) => ({ universeId: ids[i], name: games[i]?.name ?? `Game ${ids[i]}` }));
+  // A game's name and icon: live if loaded, otherwise whatever we already know.
+  const label = (id, i) => games[i] ?? known[id] ?? (storedMain?.universeId === id ? storedMain : null);
+  const named = shown.map((i) => ({ universeId: ids[i], name: label(ids[i], i)?.name ?? `Game ${ids[i]}` }));
   // A line needs at least two values. E.g. "visits gained per day" has none until
   // a game has two full days of history, so there may be dates but nothing to draw.
   const chartable = named.some((g) => rows.filter((row) => row[g.universeId] != null).length >= 2);
 
-  const add = (game) => update({ with: [...others, game.universeId].join(",") });
+  const add = (game) => { remember(game); update({ with: [...others, game.universeId].join(",") }); };
   const remove = (id) => {
     if (id === mainId) update({ main: String(others[0]), with: others.slice(1).join(",") || null });
     else update({ with: others.filter((o) => o !== id).join(",") || null });
   };
   const makeMain = (id) => update({ main: String(id), with: [mainId, ...others.filter((o) => o !== id)].join(",") });
 
-  if (!mainId) return <PickFirstGame onPick={(game) => update({ main: String(game.universeId) })} />;
+  if (!mainId) return <PickFirstGame onPick={(game) => { remember(game); update({ main: String(game.universeId) }); }} />;
 
   return (
     <>
@@ -101,8 +107,8 @@ export default function ComparePage() {
       {/* The games being compared. Each chip's colour matches its line, so this doubles as the chart's legend. */}
       <div className="compare-games">
         {ids.map((id, i) => (
-          <GameChip key={id} id={id} game={games[i]} slot={slots.get(id)} isMain={id === mainId}
-                    failed={gameQueries[i]?.isError} canRemove={ids.length > 1}
+          <GameChip key={id} id={id} game={label(id, i)} slot={slots.get(id)} isMain={id === mainId}
+                    failed={gameQueries[i]?.isError ? (gameQueries[i].error?.status === 404 ? "missing" : "error") : null} canRemove={ids.length > 1}
                     onRemove={() => remove(id)} onMakeMain={() => makeMain(id)} />
         ))}
         {others.length < MAX_OTHERS && (
@@ -182,14 +188,16 @@ export default function ComparePage() {
         </div>
       </section>
 
-      <SideBySide ids={ids} games={games} series={series} slots={slots} mainId={mainId} range={range} />
+      <SideBySide ids={ids} games={games} labels={ids.map((id, i) => label(id, i))} series={series} slots={slots}
+                  mainId={mainId} range={range} />
     </>
   );
 }
 
 /** One game in the comparison: its colour, name, and buttons to make it main or remove it. */
 function GameChip({ id, game, slot, isMain, failed, canRemove, onRemove, onMakeMain }) {
-  const name = game?.name ?? (failed ? "Game not found" : "Loading…");
+  // "missing" = Roblox says there's no such game; "error" = it couldn't be loaded right now.
+  const name = failed === "missing" ? "Game not found" : game?.name ?? (failed ? "Couldn't load" : "Loading…");
   return (
     <div className={`compare-chip${isMain ? " is-main" : ""}`}>
       <span className={`chip-swatch series-bg-${slot}`} aria-hidden="true" />
@@ -241,7 +249,7 @@ function CompareTable({ rows, games, metric, mode, resolution }) {
 const RANGE_WORDS = { "24h": "24h", "7d": "7 days", "30d": "30 days", "90d": "90 days", "1y": "year", ytd: "this year", all: "all time" };
 
 /** Side by side: the key numbers for each game, and how each compares with the main game. */
-function SideBySide({ ids, games, series, slots, mainId, range }) {
+function SideBySide({ ids, games, labels, series, slots, mainId, range }) {
   const main = games[0];
   const mainRating = main && likeRatio(main.likes, main.dislikes);
   return (
@@ -274,9 +282,9 @@ function SideBySide({ ids, games, series, slots, mainId, range }) {
                   <td className="col-name">
                     <span className="table-game">
                       <span className={`chip-swatch series-bg-${slots.get(id)}`} aria-hidden="true" />
-                      <GameIcon src={g?.icon} size={28} />
+                      <GameIcon src={labels[i]?.icon} size={28} />
                       <span className="table-game-text">
-                        <span className="table-game-name">{g?.name ?? "Loading…"}</span>
+                        <span className="table-game-name">{labels[i]?.name ?? "Loading…"}</span>
                         {isMain && <span className="muted small">Main game</span>}
                       </span>
                     </span>

@@ -163,8 +163,10 @@ const STEPS = [
   ["month", 1], ["month", 3], ["month", 6], ["year", 1],
 ];
 
-export function timeTicks(minT, maxT, maxTicks = 7) {
-  for (const [unit, n] of STEPS) {
+export function timeTicks(minT, maxT, maxTicks = 7, smallestUnit = "hour") {
+  // A daily chart only gets day (or longer) labels: "06:00" would mean nothing there.
+  const steps = STEPS.slice(STEPS.findIndex(([unit]) => unit === smallestUnit));
+  for (const [unit, n] of steps) {
     const d = new Date(minT * 1000);
     if (unit === "hour") { d.setMinutes(0, 0, 0); d.setHours(d.getHours() - (d.getHours() % n)); }
     else if (unit === "day") d.setHours(0, 0, 0, 0);
@@ -234,6 +236,32 @@ export function eventsByPoint(events, times, resolution) {
     if (best !== null) byPoint.set(best, [...(byPoint.get(best) ?? []), event]);
   }
   return byPoint;
+}
+
+/**
+ * The update markers to draw on a chart, as [{ t, events }]:
+ *   - only updates within the chart's own time span (one published after the
+ *     latest reading appears once the next reading arrives)
+ *   - hourly charts: each update at its own time; daily charts: on its day's point
+ *   - updates closer together than `minGap` seconds share one marker, so a
+ *     developer publishing several fixes close together doesn't draw a wall of
+ *     overlapping lines. The chart works out `minGap` from its width on screen,
+ *     so flags never touch, on a phone or a wide monitor (default: 2% of the span).
+ * Each marker sits at its first update's time (or day).
+ */
+export function eventMarkers(events, first, last, resolution, minGap = (last - first) / 50) {
+  const position = resolution === "day"
+    ? (t) => Math.floor(t / 86_400) * 86_400 // daily points are UTC days
+    : (t) => t;
+  const markers = [];
+  for (const event of [...events].sort((a, b) => a.t - b.t)) {
+    const at = position(event.t);
+    if (at < first || at > last) continue;
+    const current = markers.at(-1);
+    if (current && at - current.t < Math.max(minGap, resolution === "day" ? 1 : 15 * 60)) current.events.push(event);
+    else markers.push({ t: at, events: [event] });
+  }
+  return markers;
 }
 
 /** An update's time of day in the hover box, e.g. "19:46" (or "7:46 PM", by the visitor's settings). */

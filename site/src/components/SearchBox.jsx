@@ -14,6 +14,7 @@ import { Search } from "lucide-react";
 import { useSearch } from "../lib/api.js";
 import { formatCompact } from "../lib/format.js";
 import { useDebounced, useRecentGames } from "../lib/hooks.js";
+import { previewState } from "../lib/preview.js";
 import GameIcon from "./GameIcon.jsx";
 
 export default function SearchBox({
@@ -64,7 +65,7 @@ export default function SearchBox({
     setOpen(false);
     inputRef.current?.blur();
     if (onSelect) onSelect(game);
-    else navigate(`/game/${game.universeId}`);
+    else navigate(`/game/${game.universeId}`, { state: previewState(game) });
   }
 
   function onInputKeyDown(event) {
