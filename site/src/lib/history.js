@@ -239,6 +239,15 @@ export function eventsByPoint(events, times, resolution) {
 /** An update's time of day in the hover box, e.g. "19:46" (or "7:46 PM", by the visitor's settings). */
 export const formatEventTime = (t) => fmt({ hour: "2-digit", minute: "2-digit" }).format(t * 1000);
 
+/**
+ * What to suggest when a chart has too few values to draw. Long ranges have one
+ * point per finished day (today only counts once it's over), and "gained" figures
+ * need two days in a row, so a newly tracked game needs a few days before they fill in.
+ */
+export const notEnoughHint = (resolution) => (resolution === "day"
+  ? "This range shows one point per finished day, so it needs a few days of history. For now, try 24h, 7d or 30d (hourly readings)."
+  : "A new reading is added every hour. Check back soon.");
+
 /** When a range starts (unix seconds), matching how the API works it out. */
 export function rangeStart(rangeKey, nowMs = Date.now()) {
   const range = RANGES.find((r) => r.key === rangeKey);

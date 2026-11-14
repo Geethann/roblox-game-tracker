@@ -133,26 +133,76 @@ async function trackedSinceFor(env, ids) {
 // ---- GET /api/games/:id ------------------------------------------------------
 
 async function game(universeId, env, visitor) {
-  const [[stats], icons, ranks] = await Promise.all([
-    fetchGameStats([universeId]),
+  const [live, icons, ranks] = await Promise.all([
+    // null = Roblox didn't answer (e.g. it's refusing requests for a moment)
+    fetchGameStats([universeId]).catch((err) => { console.error("Roblox game lookup failed:", err.message); return null; }),
     fetchIcons([universeId]).catch(() => new Map()),
     env.DB.prepare("SELECT value FROM meta WHERE key = 'game_ranks'").first("value"),
   ]);
-  if (!stats) return error(404, "There's no Roblox game with that ID");
 
   // "#14 most played of 1,203" and the 24h change, from the hourly charts job.
   const saved = ranks ? JSON.parse(ranks) : null;
   const [rank, change24h] = saved?.ranks[universeId] ?? [null, null];
+  const extras = { rank: rank && { position: rank, of: saved.total }, change24h };
 
+  if (live === null) {
+    // Roblox is unavailable. For a game we track, show its latest hourly reading
+    // instead of an error, marked as not live ("stale") with the time it was taken.
+    // Never cached, so the next visit tries Roblox again.
+    const last = await lastReading(env, universeId);
+    if (!last) throw new Error("Roblox is unavailable and there's no saved reading for this game");
+    return json({ ...last, icon: icons.get(universeId) ?? last.icon, ...extras, stale: true }, 0);
+  }
+
+  const [stats] = live;
+  if (!stats) return error(404, "There's no Roblox game with that ID");
   const tracking = await startTracking(env, stats, visitor);
   return json({
     ...stats,
     icon: icons.get(universeId) ?? null,
     ...tracking,
-    rank: rank && { position: rank, of: saved.total },
-    change24h,
+    ...extras,
+    stale: false,
     fetchedAt: nowSeconds(),
   }, 60);
+}
+
+/**
+ * A tracked game's details and newest hourly reading, in the same shape as
+ * fetchGameStats, or null if we aren't tracking it. Used when Roblox is down.
+ */
+async function lastReading(env, universeId) {
+  const row = await env.DB.prepare(`
+    SELECT g.root_place_id, g.name, g.creator_name, g.genre, g.icon, g.created_at,
+           g.last_updated, g.tracked_since, s.hour, s.playing, s.visits, s.favorites, s.likes, s.dislikes
+      FROM games g
+      JOIN snapshots s ON s.universe_id = g.universe_id
+     WHERE g.universe_id = ?1 AND g.active = 1 AND g.name IS NOT NULL
+     ORDER BY s.hour DESC
+     LIMIT 1`,
+  ).bind(universeId).first();
+  if (!row) return null;
+  return {
+    universeId,
+    rootPlaceId: row.root_place_id,
+    name: row.name,
+    creatorName: row.creator_name,
+    description: "",
+    genre: row.genre,
+    maxPlayers: null,
+    createdAt: row.created_at,
+    lastUpdated: row.last_updated,
+    playing: row.playing,
+    visits: row.visits,
+    favorites: row.favorites,
+    likes: row.likes,
+    dislikes: row.dislikes,
+    icon: row.icon,
+    trackedSince: row.tracked_since,
+    isTracking: true,
+    notTrackedReason: null,
+    fetchedAt: row.hour, // when this reading was taken, so the page can say "Updated 25 minutes ago"
+  };
 }
 
 /**
