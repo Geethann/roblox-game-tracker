@@ -8,7 +8,7 @@ import { Link, useLocation, useParams, useSearchParams } from "react-router";
 import { ArrowDown, ArrowRight, ArrowUp, ExternalLink, GitCompareArrows, Star } from "lucide-react";
 import { useGame, useHistory } from "../lib/api.js";
 import {
-  formatCompact, formatDate, formatNumber, formatPercent, likeRatio, timeAgo,
+  formatCompact, formatDate, formatDateTime, formatNumber, formatPercent, likeRatio, timeAgo,
 } from "../lib/format.js";
 import {
   DEFAULT_RANGE, RANGES, eventsByPoint, isMetric, isRange, preparePoints, rangeStart, summarise,
@@ -183,7 +183,7 @@ export default function GamePage() {
           label="Peak (hourly)"
           info="Players are checked once an hour, so short spikes between checks can be missed."
           value={summary?.peak != null ? formatNumber(summary.peak) : "—"}
-          footnote={peakFootnote(summary, phrase, historyStartsLate)}
+          footnote={peakFootnote(summary, phrase, resolution)}
         />
         <StatCard label="Total visits" value={formatCompact(g.visits)} exact={formatNumber(g.visits)}
                   change={summary?.visitsGained}
@@ -191,7 +191,7 @@ export default function GamePage() {
         <StatCard label="Favourites" value={formatCompact(g.favorites)} exact={formatNumber(g.favorites)}
                   change={summary?.favoritesGained}
                   changeText={summary?.favoritesGained != null
-                    && `${signed(formatCompact(summary.favoritesGained))} (${formatPercent(summary.favoritesChange, { signed: true })}) ${phrase}`} />
+                    && `${signed(formatCompact(summary.favoritesGained))}${percentAfter(summary.favoritesChange)} ${phrase}`} />
         <StatCard label="Rating" value={formatPercent(likeRatio(g.likes, g.dislikes))}
                   change={ratingPoints(summary?.ratingChange)}
                   changeText={summary?.ratingChange != null && `${signedPoints(summary.ratingChange)} ${phrase}`}
@@ -219,12 +219,19 @@ export default function GamePage() {
   );
 }
 
-/** "in the last 7 days · 13 Nov", but without repeating a date already in the phrase. */
-function peakFootnote(summary, phrase, historyStartsLate) {
+/** When the peak happened: "Reached 14 Nov 2026, 13:00" (daily charts: just the day).
+ *  The range it covers is already shown by the range picker above the cards. */
+function peakFootnote(summary, phrase, resolution) {
   if (!summary?.peakAt) return phrase;
-  const peakDay = formatDate(summary.peakAt);
-  if (historyStartsLate && peakDay === formatDate(summary.from)) return phrase; // "since 13 Nov" already says it
-  return `${phrase} · ${peakDay}`;
+  return `Reached ${resolution === "day" ? formatDate(summary.peakAt) : formatDateTime(summary.peakAt)}`;
+}
+
+/** " (+1.2%)" after a favourites change. A tiny change shows " (<0.1%)" rather than
+ *  rounding to "0%", which would look like no change at all. */
+function percentAfter(fraction) {
+  if (fraction == null) return "";
+  if (fraction !== 0 && Math.abs(fraction) < 0.0005) return " (<0.1%)";
+  return ` (${formatPercent(fraction, { signed: true })})`;
 }
 
 /** "+1.2M" for positive numbers (formatCompact already adds "-" for negatives). */
