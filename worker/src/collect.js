@@ -1,6 +1,6 @@
 // Records this hour's numbers for one "slice" of the tracked games.
 
-import { fetchGameStats } from "./roblox.js";
+import { fetchGameStats, fetchIcons } from "./roblox.js";
 import { nowSeconds, setMeta } from "./db.js";
 
 /**
@@ -16,13 +16,17 @@ export async function collectSlice(env, slice, now) {
 
   // 1. Which games are in this slice, and what did we last know about them?
   const { results: games } = await env.DB.prepare(
-    `SELECT universe_id, name, last_updated, created_at, genre
+    `SELECT universe_id, name, last_updated, created_at, genre, icon
        FROM games
       WHERE active = 1 AND universe_id % ${SLICES} = ?1`,
   ).bind(slice).all();
 
-  // 2. Ask Roblox for their current numbers.
-  const stats = games.length ? await fetchGameStats(games.map((g) => g.universe_id)) : [];
+  // 2. Ask Roblox for their current numbers and icons, at the same time.
+  //    Icons are nice-to-have: if that request fails, the old ones are kept.
+  const ids = games.map((g) => g.universe_id);
+  const [stats, icons] = games.length
+    ? await Promise.all([fetchGameStats(ids), fetchIcons(ids).catch(() => new Map())])
+    : [[], new Map()];
   const before = new Map(games.map((g) => [g.universe_id, g]));
 
   // 3. Build every database change, then save them all in one go.
@@ -30,6 +34,7 @@ export async function collectSlice(env, slice, now) {
   for (const game of stats) {
     const old = before.get(game.universeId);
     if (!old) continue;
+    const icon = icons.get(game.universeId) ?? old.icon;
 
     // This hour's numbers. "OR IGNORE": if this hour is already saved, keep it.
     statements.push(env.DB.prepare(
@@ -56,14 +61,15 @@ export async function collectSlice(env, slice, now) {
     const changed = game.name !== old.name
       || game.lastUpdated !== old.last_updated
       || game.genre !== old.genre
+      || icon !== old.icon
       || old.created_at === null;
     if (changed) {
       statements.push(env.DB.prepare(
         `UPDATE games SET name = ?2, root_place_id = ?3, creator_name = ?4,
-                          created_at = ?5, last_updated = ?6, genre = ?7
+                          created_at = ?5, last_updated = ?6, genre = ?7, icon = ?8
           WHERE universe_id = ?1`,
       ).bind(game.universeId, game.name, game.rootPlaceId, game.creatorName,
-             game.createdAt, game.lastUpdated, game.genre));
+             game.createdAt, game.lastUpdated, game.genre, icon));
     }
   }
 

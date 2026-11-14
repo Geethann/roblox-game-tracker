@@ -2,6 +2,10 @@
 # week and opens a pull request when there's an update - straight away for
 # security fixes. Each pull request runs the normal checks, so updates that
 # break something can't be merged.
+#
+# Packages only get minor and patch updates automatically. Major versions
+# (e.g. React Router 7 -> 8) can change how things work and need code changes,
+# so they're upgraded on purpose, by hand, not by a bot.
 version: 2
 updates:
   - package-ecosystem: npm
@@ -12,6 +16,9 @@ updates:
       # One pull request for all small updates, instead of one per package.
       site-minor-and-patch:
         update-types: [minor, patch]
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: npm
     directory: /worker
@@ -20,6 +27,9 @@ updates:
     groups:
       worker-minor-and-patch:
         update-types: [minor, patch]
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: github-actions
     directory: /

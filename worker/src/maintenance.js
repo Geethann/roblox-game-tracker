@@ -1,6 +1,5 @@
 // Background jobs: the nightly tidy-up, and the home page lists.
 
-import { fetchIcons } from "./roblox.js";
 import { nowSeconds, setMeta } from "./db.js";
 
 const DAY = 86400;
@@ -76,93 +75,109 @@ export const CHART_RULES = {
 };
 
 /**
- * Runs hourly. Builds two things and saves them, so visitors get a ready-made
+ * Runs hourly. Builds three things and saves them, so visitors get a ready-made
  * answer with one tiny database read instead of crunching every game each time:
  *   "charts"       - one row per tracked game: the full tables on the charts pages
  *   "leaderboards" - the top 20 of each list, for the home page
+ *   "game_ranks"   - each game's rank by players, for "#14 most played" on game pages
+ *
+ * All the work happens inside the database: it works out the numbers, sorts the
+ * lists and writes the results straight into the meta table. The Worker only
+ * sends the instructions and waits, and waiting doesn't count towards the free
+ * plan's 10 ms computing limit per run. (Done in JavaScript, this took ~13 ms
+ * at 1,500 games.)
  */
 export async function updateCharts(env) {
-  // Each active game's latest row, plus its row from exactly 24 hours before
-  // (same time of day, so daily ups and downs don't skew the comparison).
-  const [{ results }, savedLists] = await Promise.all([
-    env.DB.prepare(`
-      SELECT g.universe_id, g.name, g.creator_name, g.genre, g.last_updated, g.tracked_since,
-             cur.hour, cur.playing, cur.visits, cur.favorites, cur.likes, cur.dislikes,
-             ago.playing AS playing_24h_ago, ago.visits AS visits_24h_ago
-        FROM games g
-        JOIN snapshots cur
-          ON cur.universe_id = g.universe_id
-         AND cur.hour = (SELECT MAX(hour) FROM snapshots WHERE universe_id = g.universe_id)
-        LEFT JOIN snapshots ago
-          ON ago.universe_id = g.universe_id AND ago.hour = cur.hour - ${DAY}
-       WHERE g.active = 1 AND g.name IS NOT NULL`,
-    ).all(),
-    env.DB.prepare("SELECT value FROM meta WHERE key = 'roblox_lists'").first("value"),
-  ]);
-
-  // Roblox's own Trending list, as positions: universeId -> 1, 2, 3...
-  const trendingIds = savedLists ? JSON.parse(savedLists).lists["top-trending"]?.ids ?? [] : [];
-  const trendingRank = new Map(trendingIds.map((id, i) => [id, i + 1]));
-
-  // Ignore games whose newest row is old (e.g. deleted from Roblox).
-  const fresh = results.filter((row) => row.hour >= nowSeconds() - 2 * 3600);
-  const icons = await fetchIcons(fresh.map((row) => row.universe_id)).catch(() => new Map());
-
-  const games = fresh.map((row) => {
-    const votes = (row.likes ?? 0) + (row.dislikes ?? 0);
-    return {
-      universeId: row.universe_id,
-      name: row.name,
-      creatorName: row.creator_name,
-      genre: row.genre,
-      icon: icons.get(row.universe_id) ?? null,
-      playing: row.playing,
-      playing24hAgo: row.playing_24h_ago,
-      change24h: row.playing_24h_ago > 0 ? (row.playing - row.playing_24h_ago) / row.playing_24h_ago : null,
-      visits: row.visits,
-      visits24h: row.visits_24h_ago == null ? null : row.visits - row.visits_24h_ago,
-      favorites: row.favorites,
-      rating: votes > 0 ? row.likes / votes : null,
-      votes,
-      lastUpdated: row.last_updated,
-      trackedSince: row.tracked_since,
-      robloxTrendingRank: trendingRank.get(row.universe_id) ?? null,
-    };
-  });
-
-  // The home page lists: the top 20 of each, using the same rules as the charts pages.
-  // `value` is the number that list is ranked by.
-  const top = (score, ascending = false) => games
-    .map((game) => ({ game, value: score(game) }))
-    .filter((entry) => entry.value != null)
-    .sort((a, b) => (ascending ? a.value - b.value : b.value - a.value))
-    .slice(0, LIST_SIZE)
-    .map(({ game, value }) => ({
-      universeId: game.universeId, name: game.name, creatorName: game.creatorName,
-      icon: game.icon, playing: game.playing, value,
-    }));
-
-  const lists = {
-    mostPlayed: top((g) => g.playing),
-    trendingOnRoblox: top((g) => g.robloxTrendingRank, true), // Roblox's order: 1 first
-    rising: top((g) => (g.playing24hAgo >= CHART_RULES.risingMinPlayers ? g.change24h : null)),
-    mostVisits24h: top((g) => g.visits24h),
-    topRated: top((g) => (g.votes >= CHART_RULES.topRatedMinVotes
-      && g.playing >= CHART_RULES.topRatedMinPlayers ? g.rating : null)),
-    recentlyUpdated: top((g) => g.lastUpdated),
-  };
-
-  // Each game's rank by players online and its 24h change, in a small separate
-  // record ({ id: [rank, change24h] }), so a game page can look up "#14 most
-  // played" without reading the whole charts table.
-  const byPlayers = games.filter((g) => g.playing != null).sort((a, b) => b.playing - a.playing);
-  const ranks = Object.fromEntries(byPlayers.map((g, i) => [g.universeId, [i + 1, g.change24h]]));
-
   const at = nowSeconds();
+  const freshAfter = at - 2 * 3600;
+  const rules = JSON.stringify(CHART_RULES);
   await env.DB.batch([
-    setMeta(env, "charts", { at, rules: CHART_RULES, games }),
-    setMeta(env, "leaderboards", { at, lists }),
-    setMeta(env, "game_ranks", { at, total: byPlayers.length, ranks }),
+    env.DB.prepare(CHARTS_SQL).bind(at, freshAfter, rules),
+    env.DB.prepare(LEADERBOARDS_SQL).bind(at, freshAfter, rules),
+    env.DB.prepare(RANKS_SQL).bind(at, freshAfter),
   ]);
-  console.log(`Charts updated: ${games.length} games`);
+  console.log("Charts updated");
 }
+
+// Every active game's latest numbers, compared with the same hour yesterday.
+// ?1 = now, ?2 = "fresh" cut-off: games whose newest row is older than 2 hours
+// are left out (e.g. deleted from Roblox). Shared by the three statements below.
+const GAMES = `
+  WITH trending AS (            -- Roblox's own Trending list, as positions 1, 2, 3...
+    SELECT CAST(value AS INTEGER) AS universe_id, CAST(key AS INTEGER) + 1 AS position
+      FROM json_each((SELECT value FROM meta WHERE key = 'roblox_lists'),
+                     '$.lists."top-trending".ids')
+  ),
+  latest AS (                   -- each game's newest row, and the one 24 hours before it
+    SELECT g.universe_id, g.name, g.creator_name, g.genre, g.icon, g.last_updated, g.tracked_since,
+           cur.playing, cur.visits, cur.favorites, cur.likes, cur.dislikes,
+           ago.playing AS playing_24h_ago, ago.visits AS visits_24h_ago,
+           COALESCE(cur.likes, 0) + COALESCE(cur.dislikes, 0) AS votes
+      FROM games g
+      JOIN snapshots cur
+        ON cur.universe_id = g.universe_id
+       AND cur.hour = (SELECT MAX(hour) FROM snapshots WHERE universe_id = g.universe_id)
+      LEFT JOIN snapshots ago
+        ON ago.universe_id = g.universe_id AND ago.hour = cur.hour - ${DAY}
+     WHERE g.active = 1 AND g.name IS NOT NULL AND cur.hour >= ?2
+  ),
+  board AS (                    -- plus the worked-out numbers the lists are ranked by
+    SELECT latest.*,
+           CASE WHEN playing_24h_ago > 0
+                THEN (playing - playing_24h_ago) * 1.0 / playing_24h_ago END AS change24h,
+           visits - visits_24h_ago AS visits24h,
+           CASE WHEN votes > 0 THEN COALESCE(likes, 0) * 1.0 / votes END AS rating,
+           trending.position AS trending_rank
+      FROM latest LEFT JOIN trending USING (universe_id)
+  )`;
+
+// Saves a value into the meta table, replacing the old one.
+// ("WHERE true" is needed by SQLite's grammar when INSERT ... SELECT has ON CONFLICT.)
+const saveMeta = (key, value) => `${GAMES}
+  INSERT INTO meta (key, value) SELECT '${key}', ${value} WHERE true
+  ON CONFLICT (key) DO UPDATE SET value = excluded.value`;
+
+// The full charts table. ?3 = CHART_RULES, sent along so the site's "View all"
+// pages always use the same rules as the home page.
+const CHARTS_SQL = saveMeta("charts", `json_object(
+  'at', ?1,
+  'rules', json(?3),
+  'games', (SELECT json_group_array(json_object(
+    'universeId', universe_id, 'name', name, 'creatorName', creator_name, 'genre', genre,
+    'icon', icon, 'playing', playing, 'playing24hAgo', playing_24h_ago, 'change24h', change24h,
+    'visits', visits, 'visits24h', visits24h, 'favorites', favorites, 'rating', rating,
+    'votes', votes, 'lastUpdated', last_updated, 'trackedSince', tracked_since,
+    'robloxTrendingRank', trending_rank)) FROM board))`);
+
+// One home page list: the top 20 games by `value`, best first, leaving out games
+// where it's NULL. Ties go to the lower ID, so the order never shuffles randomly.
+const top = (value, direction = "DESC") => `(
+  SELECT json_group_array(json(item)) FROM (
+    SELECT json_object('universeId', universe_id, 'name', name, 'creatorName', creator_name,
+                       'icon', icon, 'playing', playing, 'value', v) AS item
+      FROM (SELECT *, ${value} AS v FROM board)
+     WHERE v IS NOT NULL
+     ORDER BY v ${direction}, universe_id
+     LIMIT ${LIST_SIZE}))`;
+
+const LEADERBOARDS_SQL = saveMeta("leaderboards", `json_object(
+  'at', ?1,
+  'lists', json_object(
+    'mostPlayed', ${top("playing")},
+    'trendingOnRoblox', ${top("trending_rank", "ASC")},
+    'rising', ${top(`CASE WHEN playing_24h_ago >= json_extract(?3, '$.risingMinPlayers')
+                     THEN change24h END`)},
+    'mostVisits24h', ${top("visits24h")},
+    'topRated', ${top(`CASE WHEN votes >= json_extract(?3, '$.topRatedMinVotes')
+                        AND playing >= json_extract(?3, '$.topRatedMinPlayers')
+                       THEN rating END`)},
+    'recentlyUpdated', ${top("last_updated")}))`);
+
+// { id: [rank, change24h] }, ranked by players online, so a game page can look
+// up "#14 most played" without reading the whole charts table.
+const RANKS_SQL = saveMeta("game_ranks", `(
+  SELECT json_object('at', ?1, 'total', COUNT(*),
+                     'ranks', json_group_object(universe_id, json_array(position, change24h)))
+    FROM (SELECT universe_id, change24h,
+                 ROW_NUMBER() OVER (ORDER BY playing DESC, universe_id) AS position
+            FROM board WHERE playing IS NOT NULL))`);

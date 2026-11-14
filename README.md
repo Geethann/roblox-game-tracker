@@ -40,7 +40,7 @@ flowchart LR
 - **Collection.** A Cloudflare Worker runs every 5 minutes. Games are split into 12 groups by ID, and each run collects one group, so every game is read once an hour while each run stays small enough for the free plan.
 - **Discovery.** Every hour the Worker adds the games on Roblox's front-page lists. Opening any game on the site adds it too. Up to 1,500 games are tracked; games with no players for 30 days are paused (their history is kept).
 - **Storage.** Hourly readings are kept for 90 days. A nightly job summarises each day (average, peak and end-of-day totals) into a table kept forever, so long ranges load quickly.
-- **Precomputed lists.** The charts and home page lists are worked out once an hour and stored, so serving them costs one tiny database read per visitor.
+- **Precomputed lists.** The charts and home page lists are worked out once an hour and stored, so serving them costs one tiny database read per visitor. The database does that work itself in SQL (comparing every game with the same hour yesterday, ranking the lists, building the JSON), which keeps the Worker well inside the free plan's 10 ms of computing per run however many games are tracked.
 - **API.** The same Worker serves a JSON API for the site (search, game details, history, charts), with caching and CORS. Roblox's API can't be called from a browser directly, so the Worker acts as the proxy.
 
 ## Design decisions
