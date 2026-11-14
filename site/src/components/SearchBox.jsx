@@ -1,6 +1,6 @@
 // Search any Roblox game, with suggestions as you type.
 //
-// Keyboard:  "/" anywhere jumps here · ↑ ↓ move · Enter opens · Esc closes.
+// Keyboard:  "/" anywhere jumps here · ↑ ↓ move · Enter opens · Esc closes (twice: clears).
 // Empty box: shows the games you opened recently.
 // Built as an accessible "combobox", so screen readers announce the suggestions.
 //
@@ -70,17 +70,19 @@ export default function SearchBox({
   function onInputKeyDown(event) {
     if (event.key === "ArrowDown") {
       event.preventDefault();
-      setOpen(true);
-      setActive((i) => Math.min(i + 1, items.length - 1));
+      if (!open) setOpen(true); // first press just reopens the list, where you left off
+      else setActive((i) => Math.min(i + 1, items.length - 1));
     } else if (event.key === "ArrowUp") {
       event.preventDefault();
       setActive((i) => Math.max(i - 1, 0));
     } else if (event.key === "Enter" && open && items[active]) {
       event.preventDefault();
       choose(items[active]);
-    } else if (event.key === "Escape") {
+    } else if (event.key === "Escape" && open) {
+      // Close the suggestions but keep the text. (Search boxes normally clear
+      // on Esc; a second Esc still does that.)
+      event.preventDefault();
       setOpen(false);
-      inputRef.current?.blur();
     }
   }
 

@@ -72,8 +72,11 @@ export async function rows(sql, ...params) {
  *   search  search results, in Roblox's format
  *   down    parts of Roblox that are broken, e.g. ["thumbnails"] or ["search"]
  *   iconVersion  changes every icon link, to pretend the icons were updated
+ *   placeholders IDs Roblox answers with its "[TITLE UNAVAILABLE]" placeholder
  */
-export function fakeRoblox({ games = {}, sorts = [], search = [], down = [], iconVersion = "v1" } = {}) {
+export function fakeRoblox({
+  games = {}, sorts = [], search = [], down = [], iconVersion = "v1", placeholders = [],
+} = {}) {
   const requested = [];
   vi.stubGlobal("fetch", async (input) => {
     const url = new URL(typeof input === "string" ? input : input.url);
@@ -88,7 +91,12 @@ export function fakeRoblox({ games = {}, sorts = [], search = [], down = [], ico
     if (down.includes(part)) return new Response("Service unavailable", { status: 400 });
 
     if (url.hostname === "games.roblox.com" && url.pathname === "/v1/games") {
-      return Response.json({ data: known.map((id) => robloxGame(id, games[id])) });
+      return Response.json({ data: [
+        ...known.map((id) => robloxGame(id, games[id])),
+        ...ids.filter((id) => placeholders.includes(id)).map(() => ({
+          ...robloxGame(0, { name: "[TITLE UNAVAILABLE]", playing: 0, visits: 0 }), rootPlaceId: 0,
+        })),
+      ] });
     }
     if (url.hostname === "games.roblox.com" && url.pathname === "/v1/games/votes") {
       return Response.json({ data: known.map((id) => ({

@@ -42,7 +42,7 @@ export default function AboutPage() {
         <dt>Peak (hourly)</dt>
         <dd>The highest of the hourly player readings in the chosen range. A short spike between two readings can be missed.</dd>
         <dt>Visits gained</dt>
-        <dd>How much a game&apos;s total visit count went up. Today isn&apos;t over yet, so it&apos;s left out of daily charts rather than shown as a fake drop.</dd>
+        <dd>How much a game&apos;s total visit count went up. On long ranges (90 days and more) the chart shows visits gained per day, and the current day only appears once it&apos;s over: a half-finished day would look like a sudden drop.</dd>
         <dt>Rating</dt>
         <dd>Likes as a share of all votes (likes ÷ (likes + dislikes)). Changes are shown in percentage points.</dd>
         <dt>Trending on Roblox</dt>

@@ -164,6 +164,13 @@ describe("a game's page", () => {
     fakeRoblox({ games: {} });
     expect((await request("/api/games/207")).status).toBe(404);
   });
+
+  it("gives 404 when Roblox answers with its \"[TITLE UNAVAILABLE]\" placeholder", async () => {
+    fakeRoblox({ placeholders: [208] });
+    const response = await request("/api/games/208");
+    expect(response.status).toBe(404);
+    expect(await rows("SELECT * FROM games")).toEqual([]);
+  });
 });
 
 describe("a game's history", () => {
