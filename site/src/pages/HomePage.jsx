@@ -167,7 +167,10 @@ function MainGameCard({ universeId }) {
           </Link>
           <div className="main-game-stats">
             <div>
-              <div className="main-game-stat-label"><span className="live-dot" aria-hidden="true" />Playing now</div>
+              {/* Same wording as the game page: the green dot only for a live number. */}
+              <div className="main-game-stat-label">
+                {g.stale ? "Players at last check" : <><span className="live-dot" aria-hidden="true" />Playing now</>}
+              </div>
               <div className="main-game-stat">{formatNumber(g.playing)}</div>
             </div>
             <div>
