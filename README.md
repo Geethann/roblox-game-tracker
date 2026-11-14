@@ -7,6 +7,10 @@ Live player counts, visits and history for any Roblox game. Pick a main game and
 
 **[Open the live site →](https://geethann.github.io/roblox-game-tracker/)**
 
+![Roblox Game Tracker](site/public/og-image.png)
+
+## Screenshots
+
 ![A game page: live player count, stat cards and the players-online history chart](docs/screenshots/game.png)
 
 | Home: your main game and the charts | Compare: your main game against others |
