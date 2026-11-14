@@ -31,6 +31,15 @@ describe("collecting a slice", () => {
     expect(await getMeta("last_collect")).toMatchObject({ slice: 3, games: 2 });
   });
 
+  it("still saves the reading if Roblox refuses the likes/dislikes request", async () => {
+    await addGame(3);
+    fakeRoblox({ games: { 3: { playing: 42 } }, down: ["votes"] });
+    await collectSlice(env, 3, NOW);
+    expect(await rows("SELECT playing, likes, dislikes FROM snapshots")).toEqual([
+      { playing: 42, likes: null, dislikes: null },
+    ]);
+  });
+
   it("keeps the first reading if the same hour is collected twice", async () => {
     await addGame(3);
     fakeRoblox({ games: { 3: { playing: 42 } } });

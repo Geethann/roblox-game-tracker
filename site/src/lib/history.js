@@ -40,6 +40,7 @@ export const METRICS = {
     label: "Visits",
     title: (res) => (res === "day" ? "New visits per day" : "New visits per hour"),
     value: (p) => p.visitsGained,
+    gained: true,
     format: formatNumber,
     axis: formatCompact,
     fromZero: true,
@@ -48,6 +49,7 @@ export const METRICS = {
     label: "Favourites",
     title: (res) => (res === "day" ? "New favourites per day" : "New favourites per hour"),
     value: (p) => p.favoritesGained,
+    gained: true,
     format: formatNumber,
     axis: formatCompact,
     fromZero: true,
@@ -100,25 +102,34 @@ export const isMetric = (key) => Object.hasOwn(METRICS, key);
 
 /**
  * Adds the values the API doesn't send directly:
- *   visitsGained, favoritesGained - change since the previous reading, only if
- *                  it's exactly one hour/day earlier (after a gap we don't guess)
+ *   visitsGained, favoritesGained - gained per hour/day since the previous
+ *                  reading. If a reading or two is missing (Roblox didn't
+ *                  answer that hour), it's the average over the gap, so the
+ *                  line doesn't break; after a longer gap we don't guess.
+ *   gainedOver   - how many hours/days that average covers (1 normally)
  *   rating       - likes ÷ (likes + dislikes)
  *   partial      - true for today in daily view: the day isn't over, so its
  *                  "gained" figures are left out rather than shown as a fake drop
  */
+export const MAX_AVERAGED_GAP = 3; // hours (or days) between two readings
+
 export function preparePoints(points, resolution, nowSeconds = Date.now() / 1000) {
   const step = resolution === "day" ? 86_400 : 3_600;
   return points.map((point, i) => {
     const previous = points[i - 1];
     const partial = resolution === "day" && point.t + step > nowSeconds;
-    const usable = previous && point.t - previous.t === step && !partial;
-    const gained = (key) => (usable && point[key] != null && previous[key] != null ? point[key] - previous[key] : null);
+    const steps = previous ? Math.round((point.t - previous.t) / step) : 0;
+    const usable = steps >= 1 && steps <= MAX_AVERAGED_GAP && !partial;
+    const gained = (key) => (usable && point[key] != null && previous[key] != null
+      ? Math.round((point[key] - previous[key]) / steps)
+      : null);
     const visits = gained("visits");
     return {
       ...point,
       partial,
       visitsGained: visits == null ? null : Math.max(0, visits), // visits never go down
       favoritesGained: gained("favorites"),                   // can go down (unfavourites)
+      gainedOver: usable ? steps : null,
       rating: likeRatio(point.likes, point.dislikes),
     };
   });
@@ -190,17 +201,20 @@ const fmt = (options) => new Intl.DateTimeFormat(undefined, options);
 const TICK_FORMATS = {
   time: fmt({ hour: "2-digit", minute: "2-digit" }),
   day: fmt({ day: "numeric", month: "short" }),
-  month: fmt({ month: "short", year: "2-digit" }),
+  month: fmt({ month: "short" }),
   year: fmt({ year: "numeric" }),
 };
 
-/** The text under one tick, e.g. "15:00", "13 Nov", "Nov 26", "2026". */
+/** The text under one tick, e.g. "15:00", "13 Nov", "Aug", "2027". */
 export function formatTick(t, unit) {
   const date = new Date(t * 1000);
   if (unit === "hour") {
     // Midnight gets the date instead, so you can see where each day starts.
     return date.getHours() === 0 ? TICK_FORMATS.day.format(date) : TICK_FORMATS.time.format(date);
   }
+  // Months are just "Aug", "Sept"... ("Aug 26" would read as 26 August); January
+  // gets the year instead, so you can see where each year starts.
+  if (unit === "month") return date.getMonth() === 0 ? TICK_FORMATS.year.format(date) : TICK_FORMATS.month.format(date);
   return TICK_FORMATS[unit].format(date);
 }
 
@@ -214,54 +228,24 @@ export const formatPointTime = (t, resolution, partial = false) =>
   TOOLTIP_FORMATS[resolution].format(t * 1000) + (partial ? " (so far)" : "");
 
 /**
- * Which chart point each update belongs to, so hovering the chart shows it:
- *   hourly chart - the reading nearest the update, so hovering right on its
- *                  marker line shows it (the hover always snaps to the nearest reading)
+ * Which chart point each update belongs to: Map of point time -> [events].
+ *   hourly chart - the first reading after the update (the first one that
+ *                  could show its effect)
  *   daily chart  - the day it happened on
- * Returns a Map of point time -> [events]. Updates with no point near them
- * (e.g. before tracking began) aren't in it.
+ * Updates newer than the latest point, or older than the first, aren't in it:
+ * they aren't on the chart.
  */
 export function eventsByPoint(events, times, resolution) {
-  const step = resolution === "day" ? 86_400 : 3_600;
   const byPoint = new Map();
-  for (const event of events) {
-    let best = null;
-    for (const t of times) {
-      if (resolution === "day") {
-        if (event.t >= t && event.t < t + step) best = t;
-      } else if (Math.abs(event.t - t) < step && (best === null || Math.abs(event.t - t) < Math.abs(event.t - best))) {
-        best = t;
-      }
-    }
-    if (best !== null) byPoint.set(best, [...(byPoint.get(best) ?? []), event]);
+  if (times.length === 0) return byPoint;
+  const step = resolution === "day" ? 86_400 : 3_600;
+  for (const event of [...events].sort((a, b) => a.t - b.t)) {
+    const t = resolution === "day"
+      ? times.find((time) => event.t >= time && event.t < time + step)
+      : times.find((time, i) => event.t <= time && event.t > (i > 0 ? times[i - 1] : time - step));
+    if (t !== undefined) byPoint.set(t, [...(byPoint.get(t) ?? []), event]);
   }
   return byPoint;
-}
-
-/**
- * The update markers to draw on a chart, as [{ t, events }]:
- *   - only updates within the chart's own time span (one published after the
- *     latest reading appears once the next reading arrives)
- *   - hourly charts: each update at its own time; daily charts: on its day's point
- *   - updates closer together than `minGap` seconds share one marker, so a
- *     developer publishing several fixes close together doesn't draw a wall of
- *     overlapping lines. The chart works out `minGap` from its width on screen,
- *     so flags never touch, on a phone or a wide monitor (default: 2% of the span).
- * Each marker sits at its first update's time (or day).
- */
-export function eventMarkers(events, first, last, resolution, minGap = (last - first) / 50) {
-  const position = resolution === "day"
-    ? (t) => Math.floor(t / 86_400) * 86_400 // daily points are UTC days
-    : (t) => t;
-  const markers = [];
-  for (const event of [...events].sort((a, b) => a.t - b.t)) {
-    const at = position(event.t);
-    if (at < first || at > last) continue;
-    const current = markers.at(-1);
-    if (current && at - current.t < Math.max(minGap, resolution === "day" ? 1 : 15 * 60)) current.events.push(event);
-    else markers.push({ t: at, events: [event] });
-  }
-  return markers;
 }
 
 /** An update's time of day in the hover box, e.g. "19:46" (or "7:46 PM", by the visitor's settings). */

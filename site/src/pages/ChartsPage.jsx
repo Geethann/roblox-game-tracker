@@ -66,8 +66,8 @@ export default function ChartsPage() {
       <section className="charts-head">
         <h1>Charts</h1>
         <p className="muted">
-          Every game the tracker records, updated hourly.
-          {charts.data?.at && <> Last updated {timeAgo(charts.data.at, now)}.</>}
+          Every game the tracker records, refreshed hourly.
+          {charts.data?.at && <> Last refreshed {timeAgo(charts.data.at, now)}.</>}
         </p>
       </section>
 

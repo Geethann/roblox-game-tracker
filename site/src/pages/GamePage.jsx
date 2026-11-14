@@ -11,7 +11,7 @@ import {
   formatCompact, formatDate, formatNumber, formatPercent, likeRatio, timeAgo,
 } from "../lib/format.js";
 import {
-  DEFAULT_RANGE, RANGES, eventMarkers, isMetric, isRange, preparePoints, rangeStart, summarise,
+  DEFAULT_RANGE, RANGES, eventsByPoint, isMetric, isRange, preparePoints, rangeStart, summarise,
 } from "../lib/history.js";
 import { useMainGame, useNow, useRecentGames } from "../lib/hooks.js";
 import { readPreview } from "../lib/preview.js";
@@ -25,6 +25,7 @@ import AboutGame from "../components/AboutGame.jsx";
 import { ErrorState, Notice, Skeleton } from "../components/Feedback.jsx";
 import NotFoundPage from "./NotFoundPage.jsx";
 
+const OLD_READING = 2 * 3600; // seconds: older than this, say Roblox isn't answering
 const NO_EVENTS = []; // one shared empty list, so it doesn't count as "changed" on every render
 
 // Why a game isn't being tracked (the backend's safeguards), in plain words.
@@ -74,10 +75,10 @@ export default function GamePage() {
   // Which updates have a marker on the chart (the list below says why the others don't).
   const chartSpan = useMemo(() => {
     if (points.length < 2) return null;
-    const first = points[0].t;
+    const byPoint = eventsByPoint(events, points.map((p) => p.t), resolution);
+    const onChart = new Set([...byPoint.values()].flat().map((e) => e.t));
     const last = points[points.length - 1].t;
-    const onChart = new Set(eventMarkers(events, first, last, resolution).flatMap((m) => m.events.map((e) => e.t)));
-    return { has: (t) => onChart.has(t), last: resolution === "day" ? last + 86_400 - 1 : last };
+    return { has: (t) => onChart.has(t), last: resolution === "day" ? last + 86_400 - 1 : last, resolution };
   }, [points, events, resolution]);
   const summary = useMemo(() => summarise(points), [points]);
 
@@ -152,9 +153,12 @@ export default function GamePage() {
       <VsMainStrip game={g} />
 
       {!g.isTracking && <Notice>{NOT_TRACKED[g.notTrackedReason] ?? NOT_TRACKED.full}</Notice>}
-      {g.stale && (
+      {/* If Roblox doesn't answer, the latest hourly reading is shown instead. That's
+          normal for an hourly tracker, so the cards just say when it was checked; this
+          notice only appears if the numbers are old (Roblox has been down a while). */}
+      {g.stale && now / 1000 - g.fetchedAt > OLD_READING && (
         <Notice>
-          Roblox isn&apos;t answering right now, so these are the numbers from the last hourly
+          Roblox isn&apos;t answering right now, so these are the numbers from the last
           check ({timeAgo(g.fetchedAt, now)}). Live numbers come back automatically.
         </Notice>
       )}
@@ -173,8 +177,8 @@ export default function GamePage() {
       </div>
 
       <div className="stat-grid">
-        <StatCard label="Playing now" live={!g.stale} value={formatNumber(g.playing)}
-                  footnote={`Updated ${timeAgo(g.fetchedAt, now)}`} />
+        <StatCard label={g.stale ? "Players at last check" : "Playing now"} live={!g.stale} value={formatNumber(g.playing)}
+                  footnote={`Checked ${timeAgo(g.fetchedAt, now)}`} />
         <StatCard
           label="Peak (hourly)"
           info="Players are checked once an hour, so short spikes between checks can be missed."

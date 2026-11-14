@@ -10,7 +10,11 @@ const SHOW_AT_FIRST = 6;
 /** Why an update has no marker on the chart, or null if it has one. */
 function offChartNote(event, span) {
   if (!span || span.has(event.t)) return null;
-  if (span.last != null && event.t > span.last) return "Not on the chart yet: it appears after the next hourly reading.";
+  if (event.t > span.last) {
+    return span.resolution === "day"
+      ? "Not on the chart yet: it appears once today is over."
+      : "Not on the chart yet: it appears after the next hourly reading.";
+  }
   return "Before this game's chart starts.";
 }
 

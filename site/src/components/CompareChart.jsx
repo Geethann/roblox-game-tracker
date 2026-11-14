@@ -9,7 +9,10 @@ const HEIGHT = 360;
 export default function CompareChart({ rows, games, slots, metric, mode, resolution, mainId }) {
   const first = rows[0].t;
   const last = rows[rows.length - 1].t;
-  const { ticks, unit } = useMemo(() => timeTicks(first, last), [first, last]);
+  const { ticks, unit } = useMemo(
+    () => timeTicks(first, last, 7, resolution === "day" ? "day" : "hour"), // daily charts: dates only
+    [first, last, resolution],
+  );
   const percent = mode === "percent";
 
   const scale = useMemo(() => {
@@ -26,7 +29,8 @@ export default function CompareChart({ rows, games, slots, metric, mode, resolut
   return (
     <div className="history-chart compare-chart">
       <ResponsiveContainer width="100%" height={HEIGHT}>
-        <LineChart data={rows} margin={{ top: 8, right: 12, bottom: 0, left: 0 }}>
+        {/* Room on the right for the last date label, which is centred on the plot's edge. */}
+        <LineChart data={rows} margin={{ top: 8, right: 24, bottom: 0, left: 0 }}>
           <CartesianGrid vertical={false} />
           <XAxis dataKey="t" type="number" scale="time" domain={[first, last]} ticks={ticks}
                  tickFormatter={(t) => formatTick(t, unit)} tickLine={false} axisLine={false}
@@ -48,7 +52,9 @@ export default function CompareChart({ rows, games, slots, metric, mode, resolut
                     type="linear" strokeWidth={game.universeId === mainId ? 2.5 : 2}
                     className={`series-line series-${slot}`} dot={false}
                     activeDot={{ r: 4, strokeWidth: 2, className: `series-dot series-${slot}` }}
-                    isAnimationActive={false} connectNulls={false} />
+                    // A game missing a reading (Roblox didn't answer that hour) is joined
+                    // across, the same as on its own page, instead of breaking its line.
+                    isAnimationActive={false} connectNulls />
             );
           })}
         </LineChart>
