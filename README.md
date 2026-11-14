@@ -7,7 +7,11 @@ Live player counts, visits and history for any Roblox game. Pick a main game and
 
 **[Open the live site →](https://geethann.github.io/roblox-game-tracker/)**
 
-![Roblox Game Tracker](site/public/og-image.png)
+![A game page: live player count, stat cards and the players-online history chart](docs/screenshots/game.png)
+
+| Home: your main game and the charts | Compare: your main game against others |
+|---|---|
+| ![Home page](docs/screenshots/home.png) | ![Compare page](docs/screenshots/compare.png) |
 
 ## Features
 
@@ -37,7 +41,7 @@ flowchart LR
     Worker -- "search, live stats, icons" --> Roblox
 ```
 
-- **Collection.** A Cloudflare Worker runs every 5 minutes. Games are split into 12 groups by ID, and each run collects one group, so every game is read once an hour while each run stays small enough for the free plan.
+- **Collection.** A Cloudflare Worker runs every 5 minutes. Games are split into 12 groups by ID, and each run collects one group, so every game is read once an hour while each run stays small enough for the free plan. Roblox sometimes turns away requests from Cloudflare's shared addresses; if a group is missed, a later run in the same hour collects it again, so charts don't get gaps.
 - **Discovery.** Every hour the Worker adds the games on Roblox's front-page lists. Opening any game on the site adds it too. Up to 1,500 games are tracked; games with no players for 30 days are paused (their history is kept).
 - **Storage.** Hourly readings are kept for 90 days. A nightly job summarises each day (average, peak and end-of-day totals) into a table kept forever, so long ranges load quickly.
 - **Precomputed lists.** The charts and home page lists are worked out once an hour and stored, so serving them costs one tiny database read per visitor. The database does that work itself in SQL (comparing every game with the same hour yesterday, ranking the lists, building the JSON), which keeps the Worker well inside the free plan's 10 ms of computing per run however many games are tracked.
