@@ -88,40 +88,58 @@ export const CHART_RULES = {
  * at 1,500 games.)
  */
 export async function updateCharts(env) {
-  const at = nowSeconds();
+  const results = await env.DB.batch(chartStatements(env, nowSeconds()));
+  const rowsRead = results.reduce((sum, r) => sum + (r.meta?.rows_read ?? 0), 0);
+  console.log(`Charts updated (${rowsRead} rows read)`);
+  return results;
+}
+
+/** The three statements the charts job runs (separate, so tests can check their cost). */
+export function chartStatements(env, at) {
   const freshAfter = at - 2 * 3600;
   const rules = JSON.stringify(CHART_RULES);
-  await env.DB.batch([
+  return [
     env.DB.prepare(CHARTS_SQL).bind(at, freshAfter, rules),
     env.DB.prepare(LEADERBOARDS_SQL).bind(at, freshAfter, rules),
     env.DB.prepare(RANKS_SQL).bind(at, freshAfter),
-  ]);
-  console.log("Charts updated");
+  ];
 }
 
 // Every active game's latest numbers, compared with the same hour yesterday.
 // ?1 = now, ?2 = "fresh" cut-off: games whose newest row is older than 2 hours
 // are left out (e.g. deleted from Roblox). Shared by the three statements below.
+//
+// Cost matters here: the free plan allows 5 million rows read per day, and this
+// runs every hour. So each game's newest row is found by looking only at its
+// last 2 hours (?2), which the (universe_id, hour) key jumps straight to: a few
+// rows per game, however much history there is. (Looking through all of a
+// game's history instead read ~465,000 rows an hour after two days, and grew.)
+// MATERIALIZED works the numbers out once per statement, rather than once for
+// every list that uses them.
 const GAMES = `
   WITH trending AS (            -- Roblox's own Trending list, as positions 1, 2, 3...
     SELECT CAST(value AS INTEGER) AS universe_id, CAST(key AS INTEGER) + 1 AS position
       FROM json_each((SELECT value FROM meta WHERE key = 'roblox_lists'),
                      '$.lists."top-trending".ids')
   ),
-  latest AS (                   -- each game's newest row, and the one 24 hours before it
-    SELECT g.universe_id, g.name, g.creator_name, g.genre, g.icon, g.last_updated, g.tracked_since,
+  newest AS MATERIALIZED (      -- each active game and the hour of its newest fresh row
+    SELECT g.*, (SELECT MAX(s.hour) FROM snapshots s
+                  WHERE s.universe_id = g.universe_id AND s.hour >= ?2) AS hour
+      FROM games g
+     WHERE g.active = 1 AND g.name IS NOT NULL
+  ),
+  latest AS (                   -- that row, and the one 24 hours before it
+    SELECT n.universe_id, n.name, n.creator_name, n.genre, n.icon, n.last_updated, n.tracked_since,
            cur.playing, cur.visits, cur.favorites, cur.likes, cur.dislikes,
            ago.playing AS playing_24h_ago, ago.visits AS visits_24h_ago,
            COALESCE(cur.likes, 0) + COALESCE(cur.dislikes, 0) AS votes
-      FROM games g
+      FROM newest n
       JOIN snapshots cur
-        ON cur.universe_id = g.universe_id
-       AND cur.hour = (SELECT MAX(hour) FROM snapshots WHERE universe_id = g.universe_id)
+        ON cur.universe_id = n.universe_id AND cur.hour = n.hour
       LEFT JOIN snapshots ago
-        ON ago.universe_id = g.universe_id AND ago.hour = cur.hour - ${DAY}
-     WHERE g.active = 1 AND g.name IS NOT NULL AND cur.hour >= ?2
+        ON ago.universe_id = n.universe_id AND ago.hour = n.hour - ${DAY}
   ),
-  board AS (                    -- plus the worked-out numbers the lists are ranked by
+  board AS MATERIALIZED (       -- plus the worked-out numbers the lists are ranked by
     SELECT latest.*,
            CASE WHEN playing_24h_ago > 0
                 THEN (playing - playing_24h_ago) * 1.0 / playing_24h_ago END AS change24h,
