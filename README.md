@@ -120,7 +120,7 @@ To point the website at a local backend, start it with `VITE_API_URL=http://127.
 
 Merging into `main` deploys automatically:
 
-- **Backend:** applies any new database migrations, then deploys the Worker. Needs the `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` repository secrets.
+- **Backend:** applies new database migrations (only when the update includes one, so code-only fixes can still deploy if the database is unavailable), then deploys the Worker. Needs the `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` repository secrets.
 - **Website:** checks the code, runs the tests, builds and publishes to GitHub Pages.
 - **Optional:** set a `CF_ANALYTICS_TOKEN` repository variable to turn on Cloudflare Web Analytics (cookie-free visitor counts).
 

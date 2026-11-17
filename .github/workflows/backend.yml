@@ -52,13 +52,32 @@ jobs:
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
     steps:
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0 # the full history, to see what this update changed
       - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
           cache-dependency-path: worker/package-lock.json
       - run: npm ci
+      # Applying migrations needs the database to answer, so only do it when this
+      # update includes one. Otherwise a code-only fix couldn't be deployed while
+      # the database is unavailable (e.g. the free plan's daily read limit was hit,
+      # which is exactly when a fix most needs to go out). Manual runs always check.
+      - name: See whether this update changes the database
+        id: db
+        env:
+          BEFORE: ${{ github.event.before }}
+          EVENT: ${{ github.event_name }}
+        run: |
+          if [ "$EVENT" = "push" ] && git diff --quiet "$BEFORE" "$GITHUB_SHA" -- migrations; then
+            echo "No database changes in this update."
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
       - name: Apply new database migrations
+        if: steps.db.outputs.changed == 'true'
         run: npx wrangler d1 migrations apply roblox-tracker --remote
       - name: Deploy the Worker
         run: npx wrangler deploy
