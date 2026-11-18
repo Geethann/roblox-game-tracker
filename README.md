@@ -21,7 +21,7 @@ Live player counts, visits and history for any Roblox game. Pick a main game and
 
 - **Search any Roblox game**, with suggestions as you type and keyboard shortcuts (`/`, ↑ ↓, Enter, Esc).
 - **Game pages:** live player count (refreshes every minute), rank, stat cards showing change over the chosen range, and a history chart with update markers, a table view and CSV export.
-- **Ranges:** 24h, 7d, 30d, 90d, 1Y, YTD and All. Short ranges show hourly readings; long ranges use daily summaries.
+- **Ranges:** 24h, 7d, 30d, 90d, 1Y, YTD and All. Short ranges show hourly readings; long ranges use daily summaries (until the tracker has a month of history, they show hourly readings too, so they're never nearly empty).
 - **Charts:** Most played, Trending on Roblox, Rising, Most visits today, Top rated and Recently updated, each with a full sortable, filterable table.
 - **Compare:** your main game against up to four others on one chart, with a "% change" view so games of very different sizes can be compared fairly.
 - Light and dark mode, works on phones, and every view lives in the URL so it can be shared.

@@ -12,7 +12,20 @@ import { MIN_READINGS_FOR_A_DAY, nowSeconds } from "./db.js";
 
 const DAY = 86400;
 const RANGE_DAYS = { "24h": 1, "7d": 7, "30d": 30, "90d": 90, "1y": 365 }; // plus "ytd" and "all"
-const HOURLY_RANGES = new Set(["24h", "7d", "30d"]); // longer ranges use one point per day
+const HOURLY_RANGES = new Set(["24h", "7d", "30d"]); // longer ranges use one point per day...
+const YOUNG_TRACKER_DAYS = 30; // ...except while the tracker itself is under 30 days old
+
+/**
+ * While the tracker has less than a month of history, one point per day would
+ * leave the long ranges (90d, 1Y, YTD, All) almost empty, so they use the hourly
+ * readings instead, the same as 30d (hourly rows are kept for 90 days). It goes
+ * by when the tracker started (TRACKING_BEGAN in wrangler.jsonc), not each game,
+ * so every game uses the same detail for a range and compare charts line up.
+ */
+function trackerIsYoung(env) {
+  const began = Date.parse(env.TRACKING_BEGAN ?? "") / 1000;
+  return Number.isFinite(began) && nowSeconds() < began + YOUNG_TRACKER_DAYS * DAY;
+}
 
 // Sent with every reply.
 const HEADERS = {
@@ -305,7 +318,7 @@ async function history(universeId, range, env) {
   const start = rangeStart(range);
   if (start === null) return error(400, "range must be one of: 24h, 7d, 30d, 90d, 1y, ytd, all");
 
-  const resolution = HOURLY_RANGES.has(range) ? "hour" : "day";
+  const resolution = HOURLY_RANGES.has(range) || trackerIsYoung(env) ? "hour" : "day";
   const [points, events] = await env.DB.batch([
     resolution === "hour"
       ? env.DB.prepare(HOURLY_POINTS).bind(universeId, start)

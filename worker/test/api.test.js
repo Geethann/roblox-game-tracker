@@ -241,6 +241,9 @@ describe("a game's page", () => {
 });
 
 describe("a game's history", () => {
+  // A tracker that started long ago, so long ranges use one point per day.
+  const OLD_TRACKER = { TRACKING_BEGAN: "2020-01-01" };
+
   it("uses hourly readings for short ranges, with update markers", async () => {
     const start = today();
     await addReading(300, start, { playing: 10 });
@@ -257,7 +260,7 @@ describe("a game's history", () => {
     await env.DB.prepare("INSERT INTO daily VALUES (301, ?1, 7, 9, 4000, 40, 80, 8)").bind(start - 3 * DAY).run();
     await addReading(301, start, { playing: 10, visits: 4100 });
     await addReading(301, start + 1, { playing: 30, visits: 4200 });
-    const history = await (await request("/api/games/301/history?range=90d")).json();
+    const history = await (await request("/api/games/301/history?range=90d", { envChanges: OLD_TRACKER })).json();
 
     expect(history.resolution).toBe("day");
     expect(history.points).toEqual([
@@ -271,8 +274,23 @@ describe("a game's history", () => {
     for (let h = 0; h < 10; h++) await addReading(303, start - 2 * DAY + h * HOUR, { playing: 5 }); // an outage day
     for (let h = 0; h < 20; h++) await addReading(303, start - DAY + h * HOUR, { playing: 6 });     // enough readings
     await addReading(303, start, { playing: 7 });                                                  // today, so far
-    const history = await (await request("/api/games/303/history?range=90d")).json();
+    const history = await (await request("/api/games/303/history?range=90d", { envChanges: OLD_TRACKER })).json();
     expect(history.points.map((p) => p.t)).toEqual([start - DAY, start]);
+  });
+
+  it("while the tracker is under 30 days old, long ranges use hourly readings (else they'd be nearly empty)", async () => {
+    const start = today();
+    for (let h = 0; h < 30; h++) await addReading(304, start - 2 * DAY + h * HOUR, { playing: h });
+    const youngTracker = { TRACKING_BEGAN: new Date((start - 5 * DAY) * 1000).toISOString().slice(0, 10) };
+    for (const range of ["90d", "1y", "ytd", "all"]) {
+      const history = await (await request(`/api/games/304/history?range=${range}`, { envChanges: youngTracker })).json();
+      expect(history.resolution).toBe("hour");
+      expect(history.points).toHaveLength(30);
+    }
+    // ...and from day 30 on, they switch to one point per day. (Another game: answers are cached for 5 minutes.)
+    await addReading(305, start, { playing: 1 });
+    const older = await (await request("/api/games/305/history?range=1y", { envChanges: OLD_TRACKER })).json();
+    expect(older.resolution).toBe("day");
   });
 
   it("doesn't let an empty history be cached (the first reading is about to appear)", async () => {
