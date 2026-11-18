@@ -117,7 +117,10 @@ export function chartStatements(env, at) {
 // MATERIALIZED works the numbers out once per statement, rather than once for
 // every list that uses them.
 const GAMES = `
-  WITH trending AS (            -- Roblox's own Trending list, as positions 1, 2, 3...
+  WITH trending AS MATERIALIZED (  -- Roblox's own Trending list, as positions 1, 2, 3...
+                                   -- (MATERIALIZED: made into a table the database can
+                                   -- index, instead of re-reading the whole list for
+                                   -- every game: ~95,000 rows a statement at 930 games)
     SELECT CAST(value AS INTEGER) AS universe_id, CAST(key AS INTEGER) + 1 AS position
       FROM json_each((SELECT value FROM meta WHERE key = 'roblox_lists'),
                      '$.lists."top-trending".ids')
