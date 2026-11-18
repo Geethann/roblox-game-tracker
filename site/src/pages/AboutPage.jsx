@@ -60,6 +60,7 @@ export default function AboutPage() {
         <li><strong>History starts when tracking starts.</strong> Roblox doesn&apos;t provide past numbers, so no tracker can show a game&apos;s history from before it began recording.</li>
         <li><strong>Hourly readings</strong> show the shape of a day well but can miss short spikes, for example right after an update.</li>
         <li><strong>Long ranges use daily summaries.</strong> Hourly readings are kept for 90 days; after that, each day is kept as its average, peak and end-of-day totals.</li>
+        <li><strong>Gaps are shown as gaps.</strong> If readings are missing for more than 3 hours, the chart line breaks there rather than drawing across it. A day with fewer than 18 of its 24 readings is left out of the daily charts, as its average and peak would be misleading. From 15 to 17 November 2026 readings stopped each day from mid-morning to midnight, while the tracker&apos;s database was over its daily limit.</li>
         <li>Roblox&apos;s search and front-page lists aren&apos;t officially documented, so they could change. If search fails, the site falls back to searching games it already tracks.</li>
       </ul>
 

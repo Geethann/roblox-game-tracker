@@ -1,7 +1,7 @@
 // Several games on one chart: one line each, in the game's colour slot.
 import { useMemo } from "react";
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { formatPointTime, formatTick, timeTicks, valueScale } from "../lib/history.js";
+import { formatPointTime, formatTick, isolated, timeTicks, valueScale } from "../lib/history.js";
 import { formatPercent } from "../lib/format.js";
 import { lineKey } from "../lib/compare.js";
 
@@ -51,7 +51,11 @@ export default function CompareChart({ rows, games, slots, metric, mode, resolut
             return (
               <Line key={game.universeId} dataKey={lineKey(game.universeId)} name={game.name}
                     type="linear" strokeWidth={game.universeId === mainId ? 2.5 : 2}
-                    className={`series-line series-${slot}`} dot={false}
+                    className={`series-line series-${slot}`}
+                    // A lone reading (no neighbour on either side) gets a dot, as it has no line.
+                    dot={({ cx, cy, index }) => (isolated(rows, index, (row) => row[lineKey(game.universeId)])
+                      ? <circle key={index} cx={cx} cy={cy} r={3.5} className={`series-dot series-${slot}`} />
+                      : <g key={index} />)}
                     // No dot where this game has no real reading (its line is only joined across there).
                     activeDot={({ cx, cy, payload }) => (payload?.[game.universeId] == null ? <g />
                       : <circle cx={cx} cy={cy} r={4} strokeWidth={2} className={`series-dot series-${slot}`} />)}

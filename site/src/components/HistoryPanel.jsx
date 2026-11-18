@@ -5,7 +5,7 @@ import { Area, AreaChart, CartesianGrid, ReferenceDot, ReferenceLine, Responsive
 import { ChartLine, Download, Table2 } from "lucide-react";
 import {
   METRICS, downloadFile, eventsByPoint, formatEventTime, formatPointTime, formatTick, notEnoughHint, slugify,
-  timeTicks, toCsv, valueScale, withGaps,
+  isolated, timeTicks, toCsv, valueScale, withGaps,
 } from "../lib/history.js";
 import { formatDate, formatNumber } from "../lib/format.js";
 import { Skeleton } from "./Feedback.jsx";
@@ -135,6 +135,11 @@ function Chart({ data, metric, resolution, events, highlightedEvent }) {
           <Area type="linear" dataKey="value" stroke="currentColor" strokeWidth={2}
                 fill="currentColor" fillOpacity={metric.fromZero ? 0.1 : 0}
                 isAnimationActive={false} connectNulls={false}
+                // A reading with no neighbour on either side (e.g. a lone day between gaps)
+                // has no line to sit on, so it's drawn as a dot instead of disappearing.
+                dot={({ cx, cy, index }) => (isolated(data, index, (d) => d.value)
+                  ? <circle key={index} className="lone-dot" cx={cx} cy={cy} r={3.5} />
+                  : <g key={index} />)}
                 activeDot={{ r: 4, strokeWidth: 2 }} />
           {[...eventsAt.keys()].map((t) => (
             <ReferenceDot key={t} x={t} y={scale.domain[0]} ifOverflow="visible"
