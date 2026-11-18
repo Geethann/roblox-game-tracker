@@ -3,7 +3,7 @@
 import { describe, expect, it } from "vitest";
 import {
   METRICS, eventsByPoint, formatTick, preparePoints, rangeStart, slugify, summarise, timeTicks, toCsv, valueScale,
-  withGaps,
+  isolated, withGaps,
 } from "./history.js";
 
 const HOUR = 3600;
@@ -177,6 +177,14 @@ describe("withGaps (where chart lines break)", () => {
   it("measures daily charts in days", () => {
     expect(withGaps([point(0), point(3 * DAY)], "day").some((p) => p.gap)).toBe(false);
     expect(withGaps([point(0), point(5 * DAY)], "day").filter((p) => p.gap)).toEqual([{ t: DAY, gap: true }]);
+  });
+});
+
+describe("isolated (lone readings get a dot)", () => {
+  const rows = [{ v: 1 }, { v: null }, { v: 2 }, { v: null }, { v: 3 }, { v: 4 }];
+  const v = (r) => r.v;
+  it("is true only for a value with no value either side", () => {
+    expect(rows.map((_, i) => isolated(rows, i, v))).toEqual([true, false, true, false, false, false]);
   });
 });
 

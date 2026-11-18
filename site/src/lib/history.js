@@ -119,6 +119,12 @@ export const MAX_AVERAGED_GAP = 3; // hours (or days) between two readings
  * drawing a straight line across a stretch with no readings (e.g. an outage).
  * Shorter gaps (a missed reading or two) stay joined.
  */
+/** True when the row at `index` has a value but neither neighbour does: a line can't show it, so it needs a dot. */
+export function isolated(rows, index, valueOf) {
+  const has = (i) => rows[i] != null && valueOf(rows[i]) != null;
+  return has(index) && !has(index - 1) && !has(index + 1);
+}
+
 export function withGaps(points, resolution) {
   const step = resolution === "day" ? 86_400 : 3_600;
   const out = [];
