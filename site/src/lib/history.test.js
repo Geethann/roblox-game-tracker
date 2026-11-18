@@ -3,6 +3,7 @@
 import { describe, expect, it } from "vitest";
 import {
   METRICS, eventsByPoint, formatTick, preparePoints, rangeStart, slugify, summarise, timeTicks, toCsv, valueScale,
+  withGaps,
 } from "./history.js";
 
 const HOUR = 3600;
@@ -160,6 +161,22 @@ describe("gained per hour across a missed reading", () => {
   it("doesn't guess after a long gap", () => {
     const pts = preparePoints([point(0, { visits: 1000 }), point(5 * HOUR, { visits: 1600 })], "hour", DAY);
     expect(pts[1].visitsGained).toBeNull();
+  });
+});
+
+describe("withGaps (where chart lines break)", () => {
+  it("adds an empty marker after a gap of more than 3 hours, so the line breaks", () => {
+    const out = withGaps([point(0), point(HOUR), point(6 * HOUR)], "hour");
+    expect(out.map((p) => [p.t, Boolean(p.gap)])).toEqual([[0, false], [HOUR, false], [2 * HOUR, true], [6 * HOUR, false]]);
+  });
+
+  it("keeps short gaps joined (a missed reading or two)", () => {
+    expect(withGaps([point(0), point(3 * HOUR)], "hour").some((p) => p.gap)).toBe(false);
+  });
+
+  it("measures daily charts in days", () => {
+    expect(withGaps([point(0), point(3 * DAY)], "day").some((p) => p.gap)).toBe(false);
+    expect(withGaps([point(0), point(5 * DAY)], "day").filter((p) => p.gap)).toEqual([{ t: DAY, gap: true }]);
   });
 });
 

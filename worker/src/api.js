@@ -8,7 +8,7 @@
 //   GET /api/status                    is the tracker healthy?
 
 import { OPTIONAL, VISITOR, fetchGameStats, fetchIcons, searchGames } from "./roblox.js";
-import { nowSeconds } from "./db.js";
+import { MIN_READINGS_FOR_A_DAY, nowSeconds } from "./db.js";
 
 const DAY = 86400;
 const RANGE_DAYS = { "24h": 1, "7d": 7, "30d": 30, "90d": 90, "1y": 365 }; // plus "ytd" and "all"
@@ -307,7 +307,9 @@ async function history(universeId, range, env) {
 
   const resolution = HOURLY_RANGES.has(range) ? "hour" : "day";
   const [points, events] = await env.DB.batch([
-    env.DB.prepare(resolution === "hour" ? HOURLY_POINTS : DAILY_POINTS).bind(universeId, start),
+    resolution === "hour"
+      ? env.DB.prepare(HOURLY_POINTS).bind(universeId, start)
+      : env.DB.prepare(DAILY_POINTS).bind(universeId, start, Math.floor(nowSeconds() / DAY) * DAY),
     env.DB.prepare(`
       SELECT at AS t, kind, detail FROM events
        WHERE universe_id = ?1 AND at >= ?2 ORDER BY at`,
@@ -335,6 +337,8 @@ const HOURLY_POINTS = `
 
 // Daily points: the nightly summaries, plus any days not summarised yet
 // (always today, as it isn't over) worked out on the spot from hourly rows.
+// Like the nightly job, a past day with too few readings is left out; today is
+// always shown (?3 = the start of today), marked "so far" on the site.
 const DAILY_POINTS = `
   SELECT day AS t, avg_playing AS playing, peak_playing AS peak,
          visits, favorites, likes, dislikes
@@ -349,7 +353,8 @@ const DAILY_POINTS = `
                  MAX(hour)                            AS last_hour
             FROM snapshots
            WHERE universe_id = ?1 AND hour >= ?2
-           GROUP BY day) AS agg
+           GROUP BY day
+          HAVING COUNT(*) >= ${MIN_READINGS_FOR_A_DAY} OR day >= ?3) AS agg
     JOIN snapshots AS eod ON eod.universe_id = ?1 AND eod.hour = agg.last_hour
    WHERE agg.day NOT IN (SELECT day FROM daily WHERE universe_id = ?1 AND day >= ?2)
   ORDER BY t`;

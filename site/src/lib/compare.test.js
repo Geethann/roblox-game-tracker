@@ -39,15 +39,45 @@ describe("mergeSeries", () => {
   ];
   const players = (p) => p.playing;
 
-  it("lines readings up by time, one column per game", () => {
-    expect(mergeSeries(series, players, "actual")).toEqual([{ t: 0, 1: 100, 2: 1000 }, { t: 1, 1: 150, 2: 900 }]);
+  it("lines readings up by time, one column per game (plus the line each game draws)", () => {
+    expect(mergeSeries(series, players, "actual")).toEqual([
+      { t: 0, 1: 100, 2: 1000, "line-1": 100, "line-2": 1000 },
+      { t: 1, 1: 150, 2: 900, "line-1": 150, "line-2": 900 },
+    ]);
   });
 
   it("in % change mode, starts every game at 0%", () => {
     const rows = mergeSeries(series, players, "percent");
-    expect(rows[0]).toEqual({ t: 0, 1: 0, 2: 0 });
+    expect(rows[0]).toMatchObject({ t: 0, 1: 0, 2: 0 });
     expect(rows[1][1]).toBeCloseTo(0.5);
     expect(rows[1][2]).toBeCloseTo(-0.1);
+  });
+
+  const HOUR = 3600;
+  const at = (hours) => hours.map(([h, playing]) => ({ t: h * HOUR, playing }));
+
+  it("draws across a game's missed reading, but never shows a made-up number for it", () => {
+    const rows = mergeSeries([
+      { id: 1, points: at([[0, 100], [2, 300]]) },             // missed hour 1
+      { id: 2, points: at([[0, 10], [1, 20], [2, 30]]) },
+    ], players, "actual");
+    expect(rows[1][1]).toBeUndefined();  // the hover box, table and CSV show nothing for game 1 at hour 1
+    expect(rows[1]["line-1"]).toBe(200); // but its line is joined straight across
+  });
+
+  it("breaks a game's line across a long gap", () => {
+    const rows = mergeSeries([
+      { id: 1, points: at([[0, 100], [6, 300]]) },             // 5 hours missing
+      { id: 2, points: at([[0, 10], [1, 11], [2, 12], [3, 13], [4, 14], [5, 15], [6, 16]]) },
+    ], players, "actual");
+    expect(rows.slice(1, 6).map((row) => row["line-1"])).toEqual([undefined, undefined, undefined, undefined, undefined]);
+  });
+
+  it("adds an empty row where no game has readings (an outage), so every line breaks", () => {
+    const rows = mergeSeries([{ id: 1, points: at([[0, 100], [10, 200]]) }], players, "actual");
+    expect(rows.map((row) => row.t)).toEqual([0, HOUR, 10 * HOUR]);
+    expect(rows[1]).toEqual({ t: HOUR, gap: true });
+    expect(toCompareCsv(rows, [{ universeId: 1, name: "A" }], "hour").split("\n")).toHaveLength(3); // header + 2 real rows
   });
 });
 

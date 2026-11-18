@@ -113,6 +113,23 @@ export const isMetric = (key) => Object.hasOwn(METRICS, key);
  */
 export const MAX_AVERAGED_GAP = 3; // hours (or days) between two readings
 
+/**
+ * Adds an empty marker ({ t, gap: true }) after any gap longer than
+ * MAX_AVERAGED_GAP hours (or days), so chart lines break there instead of
+ * drawing a straight line across a stretch with no readings (e.g. an outage).
+ * Shorter gaps (a missed reading or two) stay joined.
+ */
+export function withGaps(points, resolution) {
+  const step = resolution === "day" ? 86_400 : 3_600;
+  const out = [];
+  points.forEach((point, i) => {
+    const previous = points[i - 1];
+    if (previous && (point.t - previous.t) / step > MAX_AVERAGED_GAP) out.push({ t: previous.t + step, gap: true });
+    out.push(point);
+  });
+  return out;
+}
+
 export function preparePoints(points, resolution, nowSeconds = Date.now() / 1000) {
   const step = resolution === "day" ? 86_400 : 3_600;
   return points.map((point, i) => {

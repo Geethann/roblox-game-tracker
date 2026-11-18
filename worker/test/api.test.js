@@ -5,7 +5,7 @@ import { createExecutionContext, waitOnExecutionContext } from "cloudflare:test"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import worker from "../src/index.js";
 import {
-  DAY, addGame, addReading, fakeRoblox, resetDatabase, rows, setMeta, today,
+  DAY, HOUR, addGame, addReading, fakeRoblox, resetDatabase, rows, setMeta, today,
 } from "./helpers.js";
 
 beforeEach(resetDatabase);
@@ -264,6 +264,15 @@ describe("a game's history", () => {
       { t: start - 3 * DAY, playing: 7, peak: 9, visits: 4000, favorites: 40, likes: 80, dislikes: 8 },
       { t: start, playing: 20, peak: 30, visits: 4200, favorites: 50, likes: 90, dislikes: 10 },
     ]);
+  });
+
+  it("leaves a past day with too few readings out of the daily view, but always shows today", async () => {
+    const start = today();
+    for (let h = 0; h < 10; h++) await addReading(303, start - 2 * DAY + h * HOUR, { playing: 5 }); // an outage day
+    for (let h = 0; h < 20; h++) await addReading(303, start - DAY + h * HOUR, { playing: 6 });     // enough readings
+    await addReading(303, start, { playing: 7 });                                                  // today, so far
+    const history = await (await request("/api/games/303/history?range=90d")).json();
+    expect(history.points.map((p) => p.t)).toEqual([start - DAY, start]);
   });
 
   it("doesn't let an empty history be cached (the first reading is about to appear)", async () => {

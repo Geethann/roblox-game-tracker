@@ -1,6 +1,6 @@
 // Background jobs: the nightly tidy-up, and the home page lists.
 
-import { nowSeconds, setMeta } from "./db.js";
+import { MIN_READINGS_FOR_A_DAY, nowSeconds, setMeta } from "./db.js";
 
 const DAY = 86400;
 const KEEP_HOURLY_DAYS = 90;   // hourly rows older than this are deleted (daily rows stay)
@@ -16,7 +16,8 @@ export async function dailyMaintenance(env, now) {
   const today = Math.floor(now.getTime() / 1000 / DAY) * DAY; // midnight UTC today
 
   const [rollup, cleanup, prune] = await env.DB.batch([
-    // 1. Turn each complete day's hourly rows into one daily summary row.
+    // 1. Turn each complete day's hourly rows into one daily summary row
+    //    (only days with enough readings: see MIN_READINGS_FOR_A_DAY).
     //    "OR IGNORE" skips days already summarised.
     //    "universe_id IN (SELECT ... FROM games)" lets the database jump straight
     //    to each game's rows instead of reading the whole table.
@@ -33,7 +34,8 @@ export async function dailyMaintenance(env, now) {
                 FROM snapshots
                WHERE universe_id IN (SELECT universe_id FROM games)
                  AND hour >= ?1 AND hour < ?2
-               GROUP BY universe_id, day) AS agg
+               GROUP BY universe_id, day
+              HAVING COUNT(*) >= ${MIN_READINGS_FOR_A_DAY}) AS agg  -- days with too few readings are left out
         JOIN snapshots AS eod                            -- "end of day": the day's last row
           ON eod.universe_id = agg.universe_id AND eod.hour = agg.last_hour`,
     ).bind(today - ROLLUP_DAYS * DAY, today),

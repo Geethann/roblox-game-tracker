@@ -1,6 +1,7 @@
 // Comparing games: reading the choice from the address, keeping each game's
 // colour steady, and joining several histories into one chart.
 import { useState } from "react";
+import { MAX_AVERAGED_GAP, withGaps } from "./history.js";
 
 export const MAX_OTHERS = 4; // your main game + up to 4 others = 5 lines, the most a chart reads clearly
 export const SLOTS = 5;      // --series-1 ... --series-5 in styles.css
@@ -43,13 +44,23 @@ export function assignSlots(previous, ids) {
   return slots;
 }
 
+/** The key a game's drawn line uses in a chart row (see mergeSeries). */
+export const lineKey = (id) => `line-${id}`;
+
 /**
  * Joins several games' points into chart rows: [{ t, 123: value, 456: value }].
  * mode "percent": each game's change since its first reading in the range,
  * so games of very different sizes can share one scale fairly.
+ *
+ * Each row also has "line-123" values: what the chart draws. They're the real
+ * values, plus a straight line across a short gap where a game missed a reading
+ * or two (other games were read, so there's a row for that time), like the line
+ * on a game's own page. They're kept separate so the hover box, table and CSV
+ * only ever show real readings. Across longer gaps nothing is drawn, and an empty
+ * row is added where no game has readings (an outage), so every line breaks.
  */
-export function mergeSeries(series, valueOf, mode) {
-  const rows = new Map();
+export function mergeSeries(series, valueOf, mode, resolution = "hour") {
+  const byTime = new Map();
   for (const { id, points } of series) {
     const first = points.map(valueOf).find((v) => v != null && v !== 0);
     for (const point of points) {
@@ -57,11 +68,29 @@ export function mergeSeries(series, valueOf, mode) {
       const value = raw == null ? null
         : mode === "percent" ? (first ? raw / first - 1 : null)
         : raw;
-      if (!rows.has(point.t)) rows.set(point.t, { t: point.t });
-      rows.get(point.t)[id] = value;
+      if (!byTime.has(point.t)) byTime.set(point.t, { t: point.t });
+      byTime.get(point.t)[id] = value;
     }
   }
-  return [...rows.values()].sort((a, b) => a.t - b.t);
+  const rows = withGaps([...byTime.values()].sort((a, b) => a.t - b.t), resolution);
+
+  const step = resolution === "day" ? 86_400 : 3_600;
+  for (const { id } of series) {
+    let previous = null; // index of the row with this game's previous real value
+    rows.forEach((row, i) => {
+      if (row[id] == null) return;
+      row[lineKey(id)] = row[id];
+      const before = rows[previous];
+      if (before && i - previous > 1 && (row.t - before.t) / step <= MAX_AVERAGED_GAP) {
+        for (let k = previous + 1; k < i; k++) {
+          const along = (rows[k].t - before.t) / (row.t - before.t);
+          rows[k][lineKey(id)] = before[id] + along * (row[id] - before[id]);
+        }
+      }
+      previous = i;
+    });
+  }
+  return rows;
 }
 
 /**
@@ -77,7 +106,7 @@ function csvName(name) {
 /** A comparison table of the chart: one column per game. */
 export function toCompareCsv(rows, games, resolution) {
   const header = [resolution === "day" ? "date_utc" : "time_utc", ...games.map((g) => csvName(g.name))];
-  const lines = rows.map((row) => [
+  const lines = rows.filter((row) => !row.gap).map((row) => [
     new Date(row.t * 1000).toISOString().slice(0, resolution === "day" ? 10 : 16).replace("T", " "),
     ...games.map((g) => row[g.universeId] ?? ""),
   ]);
