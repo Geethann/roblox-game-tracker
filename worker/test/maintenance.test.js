@@ -15,25 +15,39 @@ async function addDaily(universeId, day, peak, avg = peak) {
     .bind(universeId, day, avg, peak).run();
 }
 
+/** Hourly readings for `hours` hours of a day (all 24 by default), all with these numbers. */
+async function addDay(universeId, day, numbers = {}, hours = 24) {
+  for (let h = 0; h < hours; h++) await addReading(universeId, day + h * HOUR, numbers);
+}
+
 describe("the nightly job", () => {
   it("summarises each finished day: average and peak players, end-of-day totals", async () => {
     await addGame(1);
-    await addReading(1, YESTERDAY, { playing: 10, visits: 100, favorites: 1, likes: 1, dislikes: 0 });
-    await addReading(1, YESTERDAY + 6 * HOUR, { playing: 30, visits: 200, favorites: 2, likes: 2, dislikes: 1 });
-    await addReading(1, YESTERDAY + 23 * HOUR, { playing: 21, visits: 300, favorites: 3, likes: 3, dislikes: 2 });
+    await addDay(1, YESTERDAY, { playing: 20, visits: 100, favorites: 1, likes: 1, dislikes: 0 }, 23);
+    await env.DB.prepare("UPDATE snapshots SET playing = 44 WHERE hour = ?1").bind(YESTERDAY + 6 * HOUR).run();
+    await addReading(1, YESTERDAY + 23 * HOUR, { playing: 20, visits: 300, favorites: 3, likes: 3, dislikes: 2 });
     await addReading(1, TODAY, { playing: 999 }); // today isn't over, so it isn't summarised
     await dailyMaintenance(env, NOW);
 
     expect(await rows("SELECT * FROM daily")).toEqual([{
-      universe_id: 1, day: YESTERDAY, avg_playing: 20, peak_playing: 30,
-      visits: 300, favorites: 3, likes: 3, dislikes: 2,
+      universe_id: 1, day: YESTERDAY, avg_playing: 21, peak_playing: 44, // (23 × 20 + 44) ÷ 24 = 21
+      visits: 300, favorites: 3, likes: 3, dislikes: 2,                  // from the day's last reading
     }]);
+  });
+
+  it("leaves out a day with too few readings (e.g. an outage), so it can't skew the daily charts", async () => {
+    await addGame(1);
+    await addDay(1, YESTERDAY, { playing: 50 }, 10);         // only 10 of 24 hours recorded
+    await addDay(1, YESTERDAY - DAY, { playing: 60 }, 18);   // 18 is enough
+    await dailyMaintenance(env, NOW);
+
+    expect(await rows("SELECT day FROM daily")).toEqual([{ day: YESTERDAY - DAY }]);
   });
 
   it("catches up on missed nights, but never changes a day already summarised", async () => {
     await addGame(1);
-    await addReading(1, YESTERDAY - 2 * DAY, { playing: 40 }); // 3 days ago, not summarised yet
-    await addReading(1, YESTERDAY, { playing: 50 });
+    await addDay(1, YESTERDAY - 2 * DAY, { playing: 40 }); // 3 days ago, not summarised yet
+    await addDay(1, YESTERDAY, { playing: 50 });
     await addDaily(1, YESTERDAY, 7);                           // already summarised
     await dailyMaintenance(env, NOW);
 
@@ -72,7 +86,7 @@ describe("the nightly job", () => {
 
   it("notes what it did, for the status page", async () => {
     await addGame(1, { tracked_since: TODAY - 60 * DAY });
-    await addReading(1, YESTERDAY, { playing: 0 });
+    await addDay(1, YESTERDAY, { playing: 0 });
     await addReading(1, TODAY - 100 * DAY);
     await dailyMaintenance(env, NOW);
 

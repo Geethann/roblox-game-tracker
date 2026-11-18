@@ -77,7 +77,7 @@ export default function ComparePage() {
   const allLoaded = ids.length > 0 && ids.every((id, i) => failed[i] || (series[i] && games[i]));
   const shown = ids.map((id, i) => i).filter((i) => !failed[i]);
   const resolution = series.find(Boolean)?.resolution ?? "hour";
-  const rows = allLoaded ? mergeSeries(shown.map((i) => series[i]), metric.value, mode) : [];
+  const rows = allLoaded ? mergeSeries(shown.map((i) => series[i]), metric.value, mode, resolution) : [];
   const updating = historyQueries.some((q) => q.isFetching && q.isPlaceholderData);
   // A game's name and icon: live if loaded, otherwise whatever we already know.
   const label = (id, i) => games[i] ?? known[id] ?? (storedMain?.universeId === id ? storedMain : null);
@@ -234,7 +234,7 @@ function CompareTable({ rows, games, metric, mode, resolution }) {
           </tr>
         </thead>
         <tbody>
-          {[...rows].reverse().map((row) => (
+          {rows.filter((row) => !row.gap).reverse().map((row) => (
             <tr key={row.t}>
               <td>{formatPointTime(row.t, resolution)}</td>
               {games.map((g) => <td key={g.universeId} className="num">{row[g.universeId] == null ? "—" : format(row[g.universeId])}</td>)}

@@ -5,7 +5,7 @@ import { Area, AreaChart, CartesianGrid, ReferenceDot, ReferenceLine, Responsive
 import { ChartLine, Download, Table2 } from "lucide-react";
 import {
   METRICS, downloadFile, eventsByPoint, formatEventTime, formatPointTime, formatTick, notEnoughHint, slugify,
-  timeTicks, toCsv, valueScale,
+  timeTicks, toCsv, valueScale, withGaps,
 } from "../lib/history.js";
 import { formatDate, formatNumber } from "../lib/format.js";
 import { Skeleton } from "./Feedback.jsx";
@@ -23,9 +23,12 @@ export default function HistoryPanel({
   const metric = METRICS[metricKey];
 
   // What the chart plots: one { t, value } per reading, plus the full reading for the hover box.
+  // After a long gap (no readings for over 3 hours or days) an empty "gap" row breaks the line.
   const data = useMemo(
-    () => points.map((point) => ({ t: point.t, value: metric.value(point), point })),
-    [points, metric],
+    () => withGaps(points, resolution).map((point) => (point.gap
+      ? { t: point.t, value: null, point: null, gap: true }
+      : { t: point.t, value: metric.value(point), point })),
+    [points, metric, resolution],
   );
   const hasEnough = data.filter((d) => d.value != null).length >= 2;
 
@@ -101,7 +104,7 @@ function Chart({ data, metric, resolution, events, highlightedEvent }) {
   // Each update belongs to a reading. That reading gets a small marker along the
   // bottom of the chart, and hovering it (like any point) lists the updates.
   const eventsAt = useMemo(
-    () => eventsByPoint(events, data.map((d) => d.t), resolution),
+    () => eventsByPoint(events, data.filter((d) => !d.gap).map((d) => d.t), resolution),
     [events, data, resolution],
   );
   // The reading whose update was picked in the Updates list, shown with a line.
@@ -124,7 +127,7 @@ function Chart({ data, metric, resolution, events, highlightedEvent }) {
             isAnimationActive={false}
             filterNull={false} // still show the box (and its updates) where a reading has no value
             cursor={{ strokeWidth: 1 }}
-            content={({ active, payload }) => active && payload?.length
+            content={({ active, payload }) => active && payload?.length && !payload[0].payload.gap
               ? <ChartTooltip row={payload[0].payload} metric={metric} resolution={resolution}
                               events={eventsAt.get(payload[0].payload.t) ?? []} />
               : null}
@@ -187,7 +190,7 @@ function ChartTooltip({ row, metric, resolution, events }) {
 /** The same numbers as the chart, as a table: readable without hovering, and by screen readers. */
 function HistoryTable({ data, metric, resolution }) {
   const showPeak = metric === METRICS.players && resolution === "day";
-  const rows = [...data].reverse(); // newest first
+  const rows = data.filter((row) => !row.gap).reverse(); // newest first
   return (
     <div className="history-table-wrap" style={{ maxHeight: CHART_HEIGHT }}>
       <table className="data-table">

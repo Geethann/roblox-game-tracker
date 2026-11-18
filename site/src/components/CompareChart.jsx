@@ -3,6 +3,7 @@ import { useMemo } from "react";
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { formatPointTime, formatTick, timeTicks, valueScale } from "../lib/history.js";
 import { formatPercent } from "../lib/format.js";
+import { lineKey } from "../lib/compare.js";
 
 const HEIGHT = 360;
 
@@ -40,7 +41,7 @@ export default function CompareChart({ rows, games, slots, metric, mode, resolut
           <Tooltip
             isAnimationActive={false}
             cursor={{ strokeWidth: 1 }}
-            content={({ active, payload }) => active && payload?.length
+            content={({ active, payload }) => active && payload?.length && !payload[0].payload.gap
               ? <CompareTooltip row={payload[0].payload} games={games} slots={slots}
                                 format={format} resolution={resolution} />
               : null}
@@ -48,13 +49,15 @@ export default function CompareChart({ rows, games, slots, metric, mode, resolut
           {drawOrder.map((game) => {
             const slot = slots.get(game.universeId);
             return (
-              <Line key={game.universeId} dataKey={String(game.universeId)} name={game.name}
+              <Line key={game.universeId} dataKey={lineKey(game.universeId)} name={game.name}
                     type="linear" strokeWidth={game.universeId === mainId ? 2.5 : 2}
                     className={`series-line series-${slot}`} dot={false}
-                    activeDot={{ r: 4, strokeWidth: 2, className: `series-dot series-${slot}` }}
-                    // A game missing a reading (Roblox didn't answer that hour) is joined
-                    // across, the same as on its own page, instead of breaking its line.
-                    isAnimationActive={false} connectNulls />
+                    // No dot where this game has no real reading (its line is only joined across there).
+                    activeDot={({ cx, cy, payload }) => (payload?.[game.universeId] == null ? <g />
+                      : <circle cx={cx} cy={cy} r={4} strokeWidth={2} className={`series-dot series-${slot}`} />)}
+                    // The line values already bridge a missed reading or two (see
+                    // mergeSeries); anything still empty is a long gap, so the line breaks.
+                    isAnimationActive={false} connectNulls={false} />
             );
           })}
         </LineChart>
