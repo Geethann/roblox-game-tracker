@@ -37,7 +37,12 @@ describe("the charts job's cost", () => {
       }
     }
     for (let i = 0; i < statements.length; i += 500) await env.DB.batch(statements.slice(i, i + 500));
+    // Roblox's Trending list, as the hourly discovery job saves it: matching every
+    // game against it was the second thing that made the job expensive.
+    await setMeta("roblox_lists", { lists: { "top-trending": { name: "Trending",
+      ids: Array.from({ length: GAMES }, (_, i) => GAMES - i) } } });
     const results = await updateCharts(env);
+    expect((await getMeta("charts")).games.filter((g) => g.robloxTrendingRank).length).toBe(GAMES);
     expect((await getMeta("charts")).games).toHaveLength(GAMES); // every game is still included
     return results.reduce((sum, r) => sum + r.meta.rows_read, 0);
   }
@@ -48,7 +53,7 @@ describe("the charts job's cost", () => {
     const fourDays = await rowsReadWith(96);
     expect(twoDays).toBeGreaterThan(0);                 // the database really reports it
     expect(fourDays).toBeLessThanOrEqual(twoDays * 1.02); // history doesn't make it dearer
-    expect(fourDays).toBeLessThan(GAMES * 40);          // ~30 rows per game for all three statements
+    expect(fourDays).toBeLessThan(GAMES * 50);          // ~42 rows per game for all three statements (was ~330)
   });
 });
 
