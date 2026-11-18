@@ -39,7 +39,10 @@
 	"vars": {
 		// Stay inside the free plan's database limits (100,000 writes a day, 500 MB).
 		// Each game costs ~48 writes a day: 24 hourly rows saved + 24 old ones deleted.
-		"MAX_TRACKED_GAMES": "1500"
+		"MAX_TRACKED_GAMES": "1500",
+		// The day the tracker started recording. For its first 30 days, the long
+		// chart ranges show hourly readings instead of one point per day (see api.js).
+		"TRACKING_BEGAN": "2026-11-13"
 	},
 	// Keep logs so failed runs can be investigated in the Cloudflare dashboard.
 	"observability": {
