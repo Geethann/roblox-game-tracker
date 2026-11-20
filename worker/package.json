@@ -10,7 +10,7 @@
     "db:migrate:remote": "wrangler d1 migrations apply roblox-tracker --remote"
   },
   "devDependencies": {
-    "@cloudflare/vitest-plugin": "1.4.11",
+    "@cloudflare/vitest-plugin": "1.8.4",
     "vitest": "4.1.12",
     "wrangler": "^4.162.0"
   }
