@@ -25,6 +25,7 @@ Live player counts, visits and history for any Roblox game. Pick a main game and
 - **Charts:** Most played, Trending on Roblox, Rising, Most visits today, Top rated and Recently updated, each with a full sortable, filterable table.
 - **Compare:** your main game against up to four others on one chart, with a "% change" view so games of very different sizes can be compared fairly.
 - Light and dark mode, works on phones, and every view lives in the URL so it can be shared.
+- Data analysis project: cleaning and a dashboard in Google Sheets (see [analysis/](analysis/))
 
 ## How it works
 
